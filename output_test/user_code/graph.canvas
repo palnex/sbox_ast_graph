@@ -1,0 +1,1545 @@
+{
+  "nodes": [
+    {
+      "id": "node_Formulas",
+      "type": "file",
+      "file": "user_code/Formulas.md",
+      "x": 0,
+      "y": 0,
+      "width": 400,
+      "height": 220
+    },
+    {
+      "id": "node_GameManager",
+      "type": "file",
+      "file": "user_code/GameManager.md",
+      "x": 650,
+      "y": 0,
+      "width": 400,
+      "height": 220
+    },
+    {
+      "id": "node_GameMetadata",
+      "type": "file",
+      "file": "user_code/GameMetadata.md",
+      "x": 1300,
+      "y": 0,
+      "width": 400,
+      "height": 220
+    },
+    {
+      "id": "node_Program",
+      "type": "file",
+      "file": "user_code/Program.md",
+      "x": 1950,
+      "y": 0,
+      "width": 400,
+      "height": 220
+    },
+    {
+      "id": "node_ProgressionMath",
+      "type": "file",
+      "file": "user_code/ProgressionMath.md",
+      "x": 2600,
+      "y": 0,
+      "width": 400,
+      "height": 220
+    },
+    {
+      "id": "node_StatDefinition",
+      "type": "file",
+      "file": "user_code/StatDefinition.md",
+      "x": 3250,
+      "y": 0,
+      "width": 400,
+      "height": 220
+    },
+    {
+      "id": "node_StatRegistry",
+      "type": "file",
+      "file": "user_code/StatRegistry.md",
+      "x": 3900,
+      "y": 0,
+      "width": 400,
+      "height": 220
+    },
+    {
+      "id": "node_SwarmManager",
+      "type": "file",
+      "file": "user_code/SwarmManager.md",
+      "x": 0,
+      "y": 400,
+      "width": 400,
+      "height": 220
+    },
+    {
+      "id": "node_SwarmRenderObject",
+      "type": "file",
+      "file": "user_code/SwarmRenderObject.md",
+      "x": 650,
+      "y": 400,
+      "width": 400,
+      "height": 220
+    },
+    {
+      "id": "node_TowerComponent",
+      "type": "file",
+      "file": "user_code/TowerComponent.md",
+      "x": 1300,
+      "y": 400,
+      "width": 400,
+      "height": 220
+    },
+    {
+      "id": "node_ShopMaster",
+      "type": "file",
+      "file": "user_code/ShopMaster.md",
+      "x": 1950,
+      "y": 400,
+      "width": 400,
+      "height": 220
+    },
+    {
+      "id": "node_ShopTowerPanel",
+      "type": "file",
+      "file": "user_code/ShopTowerPanel.md",
+      "x": 2600,
+      "y": 400,
+      "width": 400,
+      "height": 220
+    },
+    {
+      "id": "node_UpgradeNode",
+      "type": "file",
+      "file": "user_code/UpgradeNode.md",
+      "x": 3250,
+      "y": 400,
+      "width": 400,
+      "height": 220
+    },
+    {
+      "id": "node_CodeAnalyzer",
+      "type": "file",
+      "file": "user_code/CodeAnalyzer.md",
+      "x": 3900,
+      "y": 400,
+      "width": 400,
+      "height": 220
+    },
+    {
+      "id": "node_EngineAnalyzer",
+      "type": "file",
+      "file": "user_code/EngineAnalyzer.md",
+      "x": 0,
+      "y": 800,
+      "width": 400,
+      "height": 220
+    },
+    {
+      "id": "node_EngineApiParser",
+      "type": "file",
+      "file": "user_code/EngineApiParser.md",
+      "x": 650,
+      "y": 800,
+      "width": 400,
+      "height": 220
+    },
+    {
+      "id": "node_QueryEngine",
+      "type": "file",
+      "file": "user_code/QueryEngine.md",
+      "x": 1300,
+      "y": 800,
+      "width": 400,
+      "height": 220
+    },
+    {
+      "id": "node_CacheNode",
+      "type": "file",
+      "file": "user_code/CacheNode.md",
+      "x": 1950,
+      "y": 800,
+      "width": 400,
+      "height": 220
+    },
+    {
+      "id": "node_CacheLink",
+      "type": "file",
+      "file": "user_code/CacheLink.md",
+      "x": 2600,
+      "y": 800,
+      "width": 400,
+      "height": 220
+    },
+    {
+      "id": "node_CacheGraph",
+      "type": "file",
+      "file": "user_code/CacheGraph.md",
+      "x": 3250,
+      "y": 800,
+      "width": 400,
+      "height": 220
+    },
+    {
+      "id": "node_SemanticWalker",
+      "type": "file",
+      "file": "user_code/SemanticWalker.md",
+      "x": 3900,
+      "y": 800,
+      "width": 400,
+      "height": 220
+    },
+    {
+      "id": "node_TypeResolver",
+      "type": "file",
+      "file": "user_code/TypeResolver.md",
+      "x": 0,
+      "y": 1200,
+      "width": 400,
+      "height": 220
+    },
+    {
+      "id": "node_GraphExporter",
+      "type": "file",
+      "file": "user_code/GraphExporter.md",
+      "x": 650,
+      "y": 1200,
+      "width": 400,
+      "height": 220
+    },
+    {
+      "id": "node_TypeFilter",
+      "type": "file",
+      "file": "user_code/TypeFilter.md",
+      "x": 1300,
+      "y": 1200,
+      "width": 400,
+      "height": 220
+    },
+    {
+      "id": "node_CodeNode",
+      "type": "file",
+      "file": "user_code/CodeNode.md",
+      "x": 1950,
+      "y": 1200,
+      "width": 400,
+      "height": 220
+    },
+    {
+      "id": "node_CodeEdge",
+      "type": "file",
+      "file": "user_code/CodeEdge.md",
+      "x": 2600,
+      "y": 1200,
+      "width": 400,
+      "height": 220
+    },
+    {
+      "id": "node_CodeGraph",
+      "type": "file",
+      "file": "user_code/CodeGraph.md",
+      "x": 3250,
+      "y": 1200,
+      "width": 400,
+      "height": 220
+    },
+    {
+      "id": "node_ApiTypeNode",
+      "type": "file",
+      "file": "user_code/ApiTypeNode.md",
+      "x": 3900,
+      "y": 1200,
+      "width": 400,
+      "height": 220
+    },
+    {
+      "id": "node_ApiFieldNode",
+      "type": "file",
+      "file": "user_code/ApiFieldNode.md",
+      "x": 0,
+      "y": 1600,
+      "width": 400,
+      "height": 220
+    },
+    {
+      "id": "node_ApiPropertyNode",
+      "type": "file",
+      "file": "user_code/ApiPropertyNode.md",
+      "x": 650,
+      "y": 1600,
+      "width": 400,
+      "height": 220
+    },
+    {
+      "id": "node_ApiMethodNode",
+      "type": "file",
+      "file": "user_code/ApiMethodNode.md",
+      "x": 1300,
+      "y": 1600,
+      "width": 400,
+      "height": 220
+    },
+    {
+      "id": "node_ApiParameterNode",
+      "type": "file",
+      "file": "user_code/ApiParameterNode.md",
+      "x": 1950,
+      "y": 1600,
+      "width": 400,
+      "height": 220
+    },
+    {
+      "id": "node_TypeSignature",
+      "type": "file",
+      "file": "user_code/TypeSignature.md",
+      "x": 2600,
+      "y": 1600,
+      "width": 400,
+      "height": 220
+    },
+    {
+      "id": "node_ProjectLoader",
+      "type": "file",
+      "file": "user_code/ProjectLoader.md",
+      "x": 3250,
+      "y": 1600,
+      "width": 400,
+      "height": 220
+    },
+    {
+      "id": "node_RazorPreProcessor",
+      "type": "file",
+      "file": "user_code/RazorPreProcessor.md",
+      "x": 3900,
+      "y": 1600,
+      "width": 400,
+      "height": 220
+    },
+    {
+      "id": "node_SchemaDownloader",
+      "type": "file",
+      "file": "user_code/SchemaDownloader.md",
+      "x": 0,
+      "y": 2000,
+      "width": 400,
+      "height": 220
+    },
+    {
+      "id": "node_StubGenerator",
+      "type": "file",
+      "file": "user_code/StubGenerator.md",
+      "x": 650,
+      "y": 2000,
+      "width": 400,
+      "height": 220
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge_0",
+      "fromNode": "node_Formulas",
+      "toNode": "node_StatDefinition",
+      "label": "References: Property: CardProgression"
+    },
+    {
+      "id": "edge_1",
+      "fromNode": "node_Formulas",
+      "toNode": "node_StatRegistry",
+      "label": "Calls: Method: Get()"
+    },
+    {
+      "id": "edge_2",
+      "fromNode": "node_Formulas",
+      "toNode": "node_StatDefinition",
+      "label": "References: Property: CardParams"
+    },
+    {
+      "id": "edge_3",
+      "fromNode": "node_Formulas",
+      "toNode": "node_StatDefinition",
+      "label": "References: Property: UnlockCost"
+    },
+    {
+      "id": "edge_4",
+      "fromNode": "node_Formulas",
+      "toNode": "node_StatDefinition",
+      "label": "References: Property: PriceThresholds"
+    },
+    {
+      "id": "edge_5",
+      "fromNode": "node_Formulas",
+      "toNode": "node_StatDefinition",
+      "label": "References: Property: ShopParams"
+    },
+    {
+      "id": "edge_6",
+      "fromNode": "node_Formulas",
+      "toNode": "node_StatDefinition",
+      "label": "References: Property: ShopProgression"
+    },
+    {
+      "id": "edge_7",
+      "fromNode": "node_Formulas",
+      "toNode": "node_ProgressionMath",
+      "label": "Calls: Method: GetLinearBulkCost()"
+    },
+    {
+      "id": "edge_8",
+      "fromNode": "node_Formulas",
+      "toNode": "node_ProgressionMath",
+      "label": "Calls: Method: GetQuadraticBulkCost()"
+    },
+    {
+      "id": "edge_9",
+      "fromNode": "node_Formulas",
+      "toNode": "node_ProgressionMath",
+      "label": "Calls: Method: GetGeometricBulkCost()"
+    },
+    {
+      "id": "edge_10",
+      "fromNode": "node_Formulas",
+      "toNode": "node_ProgressionMath",
+      "label": "Calls: Method: GetLinearAffordableLevels()"
+    },
+    {
+      "id": "edge_11",
+      "fromNode": "node_Formulas",
+      "toNode": "node_ProgressionMath",
+      "label": "Calls: Method: GetQuadraticAffordableLevels()"
+    },
+    {
+      "id": "edge_12",
+      "fromNode": "node_Formulas",
+      "toNode": "node_ProgressionMath",
+      "label": "Calls: Method: GetGeometricAffordableLevels()"
+    },
+    {
+      "id": "edge_13",
+      "fromNode": "node_GameManager",
+      "toNode": "node_GameState",
+      "label": "References: Property: CurrentState"
+    },
+    {
+      "id": "edge_14",
+      "fromNode": "node_GameManager",
+      "toNode": "node_CombatStats",
+      "label": "References: Property: PermanentCombat"
+    },
+    {
+      "id": "edge_15",
+      "fromNode": "node_GameManager",
+      "toNode": "node_EconomyStats",
+      "label": "References: Property: PermanentEconomy"
+    },
+    {
+      "id": "edge_16",
+      "fromNode": "node_GameManager",
+      "toNode": "node_WorldStats",
+      "label": "References: Property: PermanentWorld"
+    },
+    {
+      "id": "edge_17",
+      "fromNode": "node_GameManager",
+      "toNode": "node_SwarmManager",
+      "label": "CallsSingleton: Method: StartRadialDisintegration()"
+    },
+    {
+      "id": "edge_18",
+      "fromNode": "node_GameMetadata",
+      "toNode": "node_StatDefinition",
+      "label": "References: Property: FriendlyName"
+    },
+    {
+      "id": "edge_19",
+      "fromNode": "node_GameMetadata",
+      "toNode": "node_StatRegistry",
+      "label": "Calls: Method: Get()"
+    },
+    {
+      "id": "edge_20",
+      "fromNode": "node_GameMetadata",
+      "toNode": "node_StatDefinition",
+      "label": "References: Property: FlatUnit"
+    },
+    {
+      "id": "edge_21",
+      "fromNode": "node_StatDefinition",
+      "toNode": "node_StatType",
+      "label": "References: Property: Type"
+    },
+    {
+      "id": "edge_22",
+      "fromNode": "node_StatDefinition",
+      "toNode": "node_ShopTab",
+      "label": "References: Property: Tab"
+    },
+    {
+      "id": "edge_23",
+      "fromNode": "node_StatDefinition",
+      "toNode": "node_ProgressionType",
+      "label": "References: Property: CardProgression"
+    },
+    {
+      "id": "edge_24",
+      "fromNode": "node_StatDefinition",
+      "toNode": "node_ProgressionType",
+      "label": "References: Property: ShopProgression"
+    },
+    {
+      "id": "edge_25",
+      "fromNode": "node_StatRegistry",
+      "toNode": "node_StatType",
+      "label": "References: Field: Stats"
+    },
+    {
+      "id": "edge_26",
+      "fromNode": "node_StatRegistry",
+      "toNode": "node_StatDefinition",
+      "label": "References: Field: Stats"
+    },
+    {
+      "id": "edge_27",
+      "fromNode": "node_StatRegistry",
+      "toNode": "node_StatType",
+      "label": "References: Property: Count"
+    },
+    {
+      "id": "edge_28",
+      "fromNode": "node_StatRegistry",
+      "toNode": "node_StatDefinition",
+      "label": "References: Property: Count"
+    },
+    {
+      "id": "edge_29",
+      "fromNode": "node_StatRegistry",
+      "toNode": "node_StatType",
+      "label": "Calls: Method: Clear()"
+    },
+    {
+      "id": "edge_30",
+      "fromNode": "node_StatRegistry",
+      "toNode": "node_StatDefinition",
+      "label": "Calls: Method: Clear()"
+    },
+    {
+      "id": "edge_31",
+      "fromNode": "node_StatRegistry",
+      "toNode": "node_StatType",
+      "label": "References: Property: Values"
+    },
+    {
+      "id": "edge_32",
+      "fromNode": "node_StatRegistry",
+      "toNode": "node_StatDefinition",
+      "label": "References: Property: Values"
+    },
+    {
+      "id": "edge_33",
+      "fromNode": "node_StatRegistry",
+      "toNode": "node_StatDefinition",
+      "label": "References: Property: PriceThresholds"
+    },
+    {
+      "id": "edge_34",
+      "fromNode": "node_StatRegistry",
+      "toNode": "node_StatDefinition",
+      "label": "References: Property: Type"
+    },
+    {
+      "id": "edge_35",
+      "fromNode": "node_StatRegistry",
+      "toNode": "node_StatType",
+      "label": "Calls: Method: TryGetValue()"
+    },
+    {
+      "id": "edge_36",
+      "fromNode": "node_StatRegistry",
+      "toNode": "node_StatDefinition",
+      "label": "Calls: Method: TryGetValue()"
+    },
+    {
+      "id": "edge_37",
+      "fromNode": "node_StatRegistry",
+      "toNode": "node_StatDefinition",
+      "label": "References: Property: CardParams"
+    },
+    {
+      "id": "edge_38",
+      "fromNode": "node_StatRegistry",
+      "toNode": "node_StatDefinition",
+      "label": "References: Property: ShopParams"
+    },
+    {
+      "id": "edge_39",
+      "fromNode": "node_SwarmManager",
+      "toNode": "node_SwarmRenderObject",
+      "label": "References: Field: _renderObject"
+    },
+    {
+      "id": "edge_40",
+      "fromNode": "node_SwarmManager",
+      "toNode": "node_GameManager",
+      "label": "CallsSingleton: Method: AddMoney()"
+    },
+    {
+      "id": "edge_41",
+      "fromNode": "node_SwarmRenderObject",
+      "toNode": "node_SwarmManager",
+      "label": "References: Field: _manager"
+    },
+    {
+      "id": "edge_42",
+      "fromNode": "node_SwarmRenderObject",
+      "toNode": "node_SwarmManager",
+      "label": "ReferencesSingleton: Property: UnitModel"
+    },
+    {
+      "id": "edge_43",
+      "fromNode": "node_SwarmRenderObject",
+      "toNode": "node_SwarmManager",
+      "label": "ReferencesSingleton: Field: _renderCount"
+    },
+    {
+      "id": "edge_44",
+      "fromNode": "node_SwarmRenderObject",
+      "toNode": "node_SwarmManager",
+      "label": "ReferencesSingleton: Field: _renderTransforms"
+    },
+    {
+      "id": "edge_45",
+      "fromNode": "node_SwarmRenderObject",
+      "toNode": "node_SwarmManager",
+      "label": "ReferencesSingleton: Field: _renderAttributes"
+    },
+    {
+      "id": "edge_46",
+      "fromNode": "node_SwarmManager",
+      "toNode": "node_GameManager",
+      "label": "ReferencesSingleton: Property: CurrentState"
+    },
+    {
+      "id": "edge_47",
+      "fromNode": "node_TowerComponent",
+      "toNode": "node_UnitComponent",
+      "label": "References: Field: _myUnit"
+    },
+    {
+      "id": "edge_48",
+      "fromNode": "node_TowerComponent",
+      "toNode": "node_GameManager",
+      "label": "ReferencesSingleton: Property: GlobalMaxHealth"
+    },
+    {
+      "id": "edge_49",
+      "fromNode": "node_TowerComponent",
+      "toNode": "node_SwarmManager",
+      "label": "ReferencesSingleton: Property: Target"
+    },
+    {
+      "id": "edge_50",
+      "fromNode": "node_TowerComponent",
+      "toNode": "node_GameManager",
+      "label": "ReferencesSingleton: Property: GlobalFireRate"
+    },
+    {
+      "id": "edge_51",
+      "fromNode": "node_TowerComponent",
+      "toNode": "node_GameManager",
+      "label": "ReferencesSingleton: Property: GlobalExtraBullets"
+    },
+    {
+      "id": "edge_52",
+      "fromNode": "node_TowerComponent",
+      "toNode": "node_GameManager",
+      "label": "ReferencesSingleton: Property: GlobalBulletSpeed"
+    },
+    {
+      "id": "edge_53",
+      "fromNode": "node_TowerComponent",
+      "toNode": "node_GameManager",
+      "label": "ReferencesSingleton: Property: GlobalBulletRange"
+    },
+    {
+      "id": "edge_54",
+      "fromNode": "node_TowerComponent",
+      "toNode": "node_GameManager",
+      "label": "ReferencesSingleton: Property: GlobalDamage"
+    },
+    {
+      "id": "edge_55",
+      "fromNode": "node_TowerComponent",
+      "toNode": "node_SwarmManager",
+      "label": "CallsSingleton: Method: CheckBulletCollision()"
+    },
+    {
+      "id": "edge_56",
+      "fromNode": "node_TowerComponent",
+      "toNode": "node_SwarmManager",
+      "label": "CallsSingleton: Method: GetUnitHealth()"
+    },
+    {
+      "id": "edge_57",
+      "fromNode": "node_TowerComponent",
+      "toNode": "node_SwarmManager",
+      "label": "CallsSingleton: Method: DamageUnit()"
+    },
+    {
+      "id": "edge_58",
+      "fromNode": "node_TowerComponent",
+      "toNode": "node_SwarmManager",
+      "label": "CallsSingleton: Method: GetUnitPosition()"
+    },
+    {
+      "id": "edge_59",
+      "fromNode": "node_TowerComponent",
+      "toNode": "node_SwarmManager",
+      "label": "CallsSingleton: Method: IsUnitAlive()"
+    },
+    {
+      "id": "edge_60",
+      "fromNode": "node_TowerComponent",
+      "toNode": "node_GameManager",
+      "label": "ReferencesSingleton: Property: GlobalRadis"
+    },
+    {
+      "id": "edge_61",
+      "fromNode": "node_ShopMaster",
+      "toNode": "node_GameManager",
+      "label": "ReferencesSingleton: Property: CurrentState"
+    },
+    {
+      "id": "edge_62",
+      "fromNode": "node_ShopMaster",
+      "toNode": "node_CameraControlComponent",
+      "label": "References: Property: Camera"
+    },
+    {
+      "id": "edge_63",
+      "fromNode": "node_ShopMaster",
+      "toNode": "node_CameraControlComponent",
+      "label": "References: Field: _camera"
+    },
+    {
+      "id": "edge_64",
+      "fromNode": "node_ShopMaster",
+      "toNode": "node_ShopTab",
+      "label": "References: Property: ActiveTab"
+    },
+    {
+      "id": "edge_65",
+      "fromNode": "node_ShopMaster",
+      "toNode": "node_GameManager",
+      "label": "CallsSingleton: Method: StartRun()"
+    },
+    {
+      "id": "edge_66",
+      "fromNode": "node_ShopMaster",
+      "toNode": "node_GameMetadata",
+      "label": "Calls: HTML Expression"
+    },
+    {
+      "id": "edge_67",
+      "fromNode": "node_ShopMaster",
+      "toNode": "node_ShopTowerPanel",
+      "label": "UI_NestedComponent: HTML Tag"
+    },
+    {
+      "id": "edge_68",
+      "fromNode": "node_ShopTowerPanel",
+      "toNode": "node_ShopTab",
+      "label": "References: Property: Category"
+    },
+    {
+      "id": "edge_69",
+      "fromNode": "node_ShopTowerPanel",
+      "toNode": "node_UpgradeNode",
+      "label": "UI_NestedComponent: HTML Tag"
+    },
+    {
+      "id": "edge_70",
+      "fromNode": "node_UpgradeNode",
+      "toNode": "node_StatModifierData",
+      "label": "References: Property: Modifiers"
+    },
+    {
+      "id": "edge_71",
+      "fromNode": "node_UpgradeNode",
+      "toNode": "node_StatType",
+      "label": "References: Property: TargetStat"
+    },
+    {
+      "id": "edge_72",
+      "fromNode": "node_UpgradeNode",
+      "toNode": "node_GameMetadata",
+      "label": "Calls: Method: FormatNumber()"
+    },
+    {
+      "id": "edge_73",
+      "fromNode": "node_UpgradeNode",
+      "toNode": "node_GameMetadata",
+      "label": "Calls: Method: GetRarityNameByLevel()"
+    },
+    {
+      "id": "edge_74",
+      "fromNode": "node_UpgradeNode",
+      "toNode": "node_Formulas",
+      "label": "Calls: Method: GetRarityUpgradeCost()"
+    },
+    {
+      "id": "edge_75",
+      "fromNode": "node_UpgradeNode",
+      "toNode": "node_StatType",
+      "label": "References: Property: HasValue"
+    },
+    {
+      "id": "edge_76",
+      "fromNode": "node_UpgradeNode",
+      "toNode": "node_StatType",
+      "label": "References: Property: Value"
+    },
+    {
+      "id": "edge_77",
+      "fromNode": "node_UpgradeNode",
+      "toNode": "node_StatModifierData",
+      "label": "References: Property: Count"
+    },
+    {
+      "id": "edge_78",
+      "fromNode": "node_UpgradeNode",
+      "toNode": "node_Formulas",
+      "label": "Calls: Method: GetCardStatBulkCost()"
+    },
+    {
+      "id": "edge_79",
+      "fromNode": "node_UpgradeNode",
+      "toNode": "node_Formulas",
+      "label": "Calls: Method: GetCardStatAffordableLevels()"
+    },
+    {
+      "id": "edge_80",
+      "fromNode": "node_UpgradeNode",
+      "toNode": "node_Formulas",
+      "label": "Calls: Method: GetShopStatBulkCost()"
+    },
+    {
+      "id": "edge_81",
+      "fromNode": "node_UpgradeNode",
+      "toNode": "node_Formulas",
+      "label": "Calls: Method: GetShopStatAffordableLevels()"
+    },
+    {
+      "id": "edge_82",
+      "fromNode": "node_UpgradeNode",
+      "toNode": "node_Formulas",
+      "label": "Calls: Method: GetBulkCost()"
+    },
+    {
+      "id": "edge_83",
+      "fromNode": "node_UpgradeNode",
+      "toNode": "node_Formulas",
+      "label": "Calls: Method: GetAffordableLevels()"
+    },
+    {
+      "id": "edge_84",
+      "fromNode": "node_CodeAnalyzer",
+      "toNode": "node_TypeFilter",
+      "label": "References: Field: _filter"
+    },
+    {
+      "id": "edge_85",
+      "fromNode": "node_CodeAnalyzer",
+      "toNode": "node_CodeGraph",
+      "label": "Calls: Method: AddEdge()"
+    },
+    {
+      "id": "edge_86",
+      "fromNode": "node_CodeAnalyzer",
+      "toNode": "node_CodeNode",
+      "label": "References: Property: Count"
+    },
+    {
+      "id": "edge_87",
+      "fromNode": "node_CodeAnalyzer",
+      "toNode": "node_CodeGraph",
+      "label": "References: Property: Nodes"
+    },
+    {
+      "id": "edge_88",
+      "fromNode": "node_CodeAnalyzer",
+      "toNode": "node_CodeEdge",
+      "label": "References: Property: Count"
+    },
+    {
+      "id": "edge_89",
+      "fromNode": "node_CodeAnalyzer",
+      "toNode": "node_CodeGraph",
+      "label": "References: Property: Edges"
+    },
+    {
+      "id": "edge_90",
+      "fromNode": "node_EngineAnalyzer",
+      "toNode": "node_ApiTypeNode",
+      "label": "References: Property: Registry"
+    },
+    {
+      "id": "edge_91",
+      "fromNode": "node_EngineAnalyzer",
+      "toNode": "node_EngineApiParser",
+      "label": "Calls: Method: Parse()"
+    },
+    {
+      "id": "edge_92",
+      "fromNode": "node_EngineAnalyzer",
+      "toNode": "node_ApiTypeNode",
+      "label": "References: Property: Value"
+    },
+    {
+      "id": "edge_93",
+      "fromNode": "node_EngineAnalyzer",
+      "toNode": "node_StubGenerator",
+      "label": "Calls: Method: SanitizeName()"
+    },
+    {
+      "id": "edge_94",
+      "fromNode": "node_EngineAnalyzer",
+      "toNode": "node_ApiTypeNode",
+      "label": "References: Property: Name"
+    },
+    {
+      "id": "edge_95",
+      "fromNode": "node_EngineAnalyzer",
+      "toNode": "node_CodeGraph",
+      "label": "Calls: Method: AddNode()"
+    },
+    {
+      "id": "edge_96",
+      "fromNode": "node_EngineAnalyzer",
+      "toNode": "node_ApiTypeNode",
+      "label": "References: Property: Namespace"
+    },
+    {
+      "id": "edge_97",
+      "fromNode": "node_EngineAnalyzer",
+      "toNode": "node_ApiTypeNode",
+      "label": "References: Property: BaseType"
+    },
+    {
+      "id": "edge_98",
+      "fromNode": "node_EngineAnalyzer",
+      "toNode": "node_TypeResolver",
+      "label": "Calls: Method: Parse()"
+    },
+    {
+      "id": "edge_99",
+      "fromNode": "node_EngineAnalyzer",
+      "toNode": "node_ApiPropertyNode",
+      "label": "References: Property: Values"
+    },
+    {
+      "id": "edge_100",
+      "fromNode": "node_EngineAnalyzer",
+      "toNode": "node_ApiTypeNode",
+      "label": "References: Property: Properties"
+    },
+    {
+      "id": "edge_101",
+      "fromNode": "node_EngineAnalyzer",
+      "toNode": "node_ApiPropertyNode",
+      "label": "References: Property: PropertyType"
+    },
+    {
+      "id": "edge_102",
+      "fromNode": "node_EngineAnalyzer",
+      "toNode": "node_ApiPropertyNode",
+      "label": "References: Property: Name"
+    },
+    {
+      "id": "edge_103",
+      "fromNode": "node_EngineAnalyzer",
+      "toNode": "node_ApiFieldNode",
+      "label": "References: Property: Values"
+    },
+    {
+      "id": "edge_104",
+      "fromNode": "node_EngineAnalyzer",
+      "toNode": "node_ApiTypeNode",
+      "label": "References: Property: Fields"
+    },
+    {
+      "id": "edge_105",
+      "fromNode": "node_EngineAnalyzer",
+      "toNode": "node_ApiFieldNode",
+      "label": "References: Property: FieldType"
+    },
+    {
+      "id": "edge_106",
+      "fromNode": "node_EngineAnalyzer",
+      "toNode": "node_ApiFieldNode",
+      "label": "References: Property: Name"
+    },
+    {
+      "id": "edge_107",
+      "fromNode": "node_EngineAnalyzer",
+      "toNode": "node_ApiMethodNode",
+      "label": "References: Property: Values"
+    },
+    {
+      "id": "edge_108",
+      "fromNode": "node_EngineAnalyzer",
+      "toNode": "node_ApiTypeNode",
+      "label": "References: Property: Methods"
+    },
+    {
+      "id": "edge_109",
+      "fromNode": "node_EngineAnalyzer",
+      "toNode": "node_ApiMethodNode",
+      "label": "References: Property: ReturnType"
+    },
+    {
+      "id": "edge_110",
+      "fromNode": "node_EngineAnalyzer",
+      "toNode": "node_ApiMethodNode",
+      "label": "References: Property: Name"
+    },
+    {
+      "id": "edge_111",
+      "fromNode": "node_EngineAnalyzer",
+      "toNode": "node_ApiMethodNode",
+      "label": "References: Property: Parameters"
+    },
+    {
+      "id": "edge_112",
+      "fromNode": "node_EngineAnalyzer",
+      "toNode": "node_ApiParameterNode",
+      "label": "References: Property: ParameterType"
+    },
+    {
+      "id": "edge_113",
+      "fromNode": "node_EngineAnalyzer",
+      "toNode": "node_ApiParameterNode",
+      "label": "References: Property: Name"
+    },
+    {
+      "id": "edge_114",
+      "fromNode": "node_EngineAnalyzer",
+      "toNode": "node_CodeNode",
+      "label": "References: Property: Count"
+    },
+    {
+      "id": "edge_115",
+      "fromNode": "node_EngineAnalyzer",
+      "toNode": "node_CodeGraph",
+      "label": "References: Property: Nodes"
+    },
+    {
+      "id": "edge_116",
+      "fromNode": "node_EngineAnalyzer",
+      "toNode": "node_CodeEdge",
+      "label": "References: Property: Count"
+    },
+    {
+      "id": "edge_117",
+      "fromNode": "node_EngineAnalyzer",
+      "toNode": "node_CodeGraph",
+      "label": "References: Property: Edges"
+    },
+    {
+      "id": "edge_118",
+      "fromNode": "node_EngineAnalyzer",
+      "toNode": "node_ApiTypeNode",
+      "label": "Calls: Method: TryGetValue()"
+    },
+    {
+      "id": "edge_119",
+      "fromNode": "node_EngineAnalyzer",
+      "toNode": "node_TypeSignature",
+      "label": "References: Property: FullName"
+    },
+    {
+      "id": "edge_120",
+      "fromNode": "node_EngineAnalyzer",
+      "toNode": "node_ApiTypeNode",
+      "label": "References: Property: Values"
+    },
+    {
+      "id": "edge_121",
+      "fromNode": "node_EngineAnalyzer",
+      "toNode": "node_TypeSignature",
+      "label": "References: Property: CleanName"
+    },
+    {
+      "id": "edge_122",
+      "fromNode": "node_EngineAnalyzer",
+      "toNode": "node_ApiTypeNode",
+      "label": "References: Property: IsValueType"
+    },
+    {
+      "id": "edge_123",
+      "fromNode": "node_EngineAnalyzer",
+      "toNode": "node_CodeGraph",
+      "label": "Calls: Method: AddEdge()"
+    },
+    {
+      "id": "edge_124",
+      "fromNode": "node_EngineAnalyzer",
+      "toNode": "node_TypeSignature",
+      "label": "References: Property: GenericArguments"
+    },
+    {
+      "id": "edge_125",
+      "fromNode": "node_EngineApiParser",
+      "toNode": "node_ApiTypeNode",
+      "label": "Calls: Method: TryGetValue()"
+    },
+    {
+      "id": "edge_126",
+      "fromNode": "node_EngineApiParser",
+      "toNode": "node_ApiFieldNode",
+      "label": "Calls: Method: ContainsKey()"
+    },
+    {
+      "id": "edge_127",
+      "fromNode": "node_EngineApiParser",
+      "toNode": "node_ApiTypeNode",
+      "label": "References: Property: Fields"
+    },
+    {
+      "id": "edge_128",
+      "fromNode": "node_EngineApiParser",
+      "toNode": "node_ApiPropertyNode",
+      "label": "Calls: Method: ContainsKey()"
+    },
+    {
+      "id": "edge_129",
+      "fromNode": "node_EngineApiParser",
+      "toNode": "node_ApiTypeNode",
+      "label": "References: Property: Properties"
+    },
+    {
+      "id": "edge_130",
+      "fromNode": "node_EngineApiParser",
+      "toNode": "node_ApiMethodNode",
+      "label": "Calls: Method: ContainsKey()"
+    },
+    {
+      "id": "edge_131",
+      "fromNode": "node_EngineApiParser",
+      "toNode": "node_ApiTypeNode",
+      "label": "References: Property: Methods"
+    },
+    {
+      "id": "edge_132",
+      "fromNode": "node_EngineApiParser",
+      "toNode": "node_ApiParameterNode",
+      "label": "Calls: Method: Add()"
+    },
+    {
+      "id": "edge_133",
+      "fromNode": "node_EngineApiParser",
+      "toNode": "node_ApiMethodNode",
+      "label": "References: Property: Parameters"
+    },
+    {
+      "id": "edge_134",
+      "fromNode": "node_CacheGraph",
+      "toNode": "node_CacheNode",
+      "label": "References: Property: nodes"
+    },
+    {
+      "id": "edge_135",
+      "fromNode": "node_CacheGraph",
+      "toNode": "node_CacheLink",
+      "label": "References: Property: links"
+    },
+    {
+      "id": "edge_136",
+      "fromNode": "node_QueryEngine",
+      "toNode": "node_CacheGraph",
+      "label": "References: Field: _graph"
+    },
+    {
+      "id": "edge_137",
+      "fromNode": "node_QueryEngine",
+      "toNode": "node_CacheLink",
+      "label": "References: Field: _adjacencyList"
+    },
+    {
+      "id": "edge_138",
+      "fromNode": "node_QueryEngine",
+      "toNode": "node_CacheGraph",
+      "label": "References: Property: nodes"
+    },
+    {
+      "id": "edge_139",
+      "fromNode": "node_QueryEngine",
+      "toNode": "node_CacheNode",
+      "label": "References: Property: id"
+    },
+    {
+      "id": "edge_140",
+      "fromNode": "node_QueryEngine",
+      "toNode": "node_CacheGraph",
+      "label": "References: Property: links"
+    },
+    {
+      "id": "edge_141",
+      "fromNode": "node_QueryEngine",
+      "toNode": "node_CacheLink",
+      "label": "Calls: Method: ContainsKey()"
+    },
+    {
+      "id": "edge_142",
+      "fromNode": "node_QueryEngine",
+      "toNode": "node_CacheLink",
+      "label": "References: Property: source"
+    },
+    {
+      "id": "edge_143",
+      "fromNode": "node_QueryEngine",
+      "toNode": "node_CacheLink",
+      "label": "Calls: Method: Add()"
+    },
+    {
+      "id": "edge_144",
+      "fromNode": "node_QueryEngine",
+      "toNode": "node_CacheLink",
+      "label": "Calls: Method: TryGetValue()"
+    },
+    {
+      "id": "edge_145",
+      "fromNode": "node_QueryEngine",
+      "toNode": "node_CacheLink",
+      "label": "References: Property: target"
+    },
+    {
+      "id": "edge_146",
+      "fromNode": "node_QueryEngine",
+      "toNode": "node_CacheLink",
+      "label": "Calls: Method: Reverse()"
+    },
+    {
+      "id": "edge_147",
+      "fromNode": "node_QueryEngine",
+      "toNode": "node_CacheLink",
+      "label": "References: Property: Count"
+    },
+    {
+      "id": "edge_148",
+      "fromNode": "node_QueryEngine",
+      "toNode": "node_CacheLink",
+      "label": "References: Property: type"
+    },
+    {
+      "id": "edge_149",
+      "fromNode": "node_QueryEngine",
+      "toNode": "node_CacheLink",
+      "label": "References: Property: details"
+    },
+    {
+      "id": "edge_150",
+      "fromNode": "node_SemanticWalker",
+      "toNode": "node_CSharpSyntaxWalker",
+      "label": "Inherits: Base Class"
+    },
+    {
+      "id": "edge_151",
+      "fromNode": "node_SemanticWalker",
+      "toNode": "node_SemanticModel",
+      "label": "References: Field: _semanticModel"
+    },
+    {
+      "id": "edge_152",
+      "fromNode": "node_SemanticWalker",
+      "toNode": "node_TypeFilter",
+      "label": "References: Field: _filter"
+    },
+    {
+      "id": "edge_153",
+      "fromNode": "node_SemanticWalker",
+      "toNode": "node_CodeGraph",
+      "label": "References: Field: _graph"
+    },
+    {
+      "id": "edge_154",
+      "fromNode": "node_SemanticWalker",
+      "toNode": "node_CodeGraph",
+      "label": "Calls: Method: AddNode()"
+    },
+    {
+      "id": "edge_155",
+      "fromNode": "node_SemanticWalker",
+      "toNode": "node_CodeGraph",
+      "label": "Calls: Method: AddEdge()"
+    },
+    {
+      "id": "edge_156",
+      "fromNode": "node_SemanticWalker",
+      "toNode": "node_TypeFilter",
+      "label": "Calls: Method: IsBlacklisted()"
+    },
+    {
+      "id": "edge_157",
+      "fromNode": "node_TypeResolver",
+      "toNode": "node_Regex",
+      "label": "References: Field: MetadataCleanupRegex"
+    },
+    {
+      "id": "edge_158",
+      "fromNode": "node_TypeResolver",
+      "toNode": "node_TypeSignature",
+      "label": "References: Property: IsByRef"
+    },
+    {
+      "id": "edge_159",
+      "fromNode": "node_TypeResolver",
+      "toNode": "node_TypeSignature",
+      "label": "References: Property: RawName"
+    },
+    {
+      "id": "edge_160",
+      "fromNode": "node_TypeResolver",
+      "toNode": "node_TypeSignature",
+      "label": "References: Property: IsArray"
+    },
+    {
+      "id": "edge_161",
+      "fromNode": "node_TypeResolver",
+      "toNode": "node_TypeSignature",
+      "label": "References: Property: IsPointer"
+    },
+    {
+      "id": "edge_162",
+      "fromNode": "node_TypeResolver",
+      "toNode": "node_TypeSignature",
+      "label": "References: Property: FullName"
+    },
+    {
+      "id": "edge_163",
+      "fromNode": "node_TypeResolver",
+      "toNode": "node_TypeSignature",
+      "label": "Calls: Method: Add()"
+    },
+    {
+      "id": "edge_164",
+      "fromNode": "node_TypeResolver",
+      "toNode": "node_TypeSignature",
+      "label": "References: Property: GenericArguments"
+    },
+    {
+      "id": "edge_165",
+      "fromNode": "node_TypeResolver",
+      "toNode": "node_TypeSignature",
+      "label": "References: Property: CleanName"
+    },
+    {
+      "id": "edge_166",
+      "fromNode": "node_GraphExporter",
+      "toNode": "node_CodeNode",
+      "label": "References: Property: Values"
+    },
+    {
+      "id": "edge_167",
+      "fromNode": "node_GraphExporter",
+      "toNode": "node_CodeGraph",
+      "label": "References: Property: Nodes"
+    },
+    {
+      "id": "edge_168",
+      "fromNode": "node_GraphExporter",
+      "toNode": "node_CodeGraph",
+      "label": "References: Property: Edges"
+    },
+    {
+      "id": "edge_169",
+      "fromNode": "node_GraphExporter",
+      "toNode": "node_CodeNode",
+      "label": "References: Property: Id"
+    },
+    {
+      "id": "edge_170",
+      "fromNode": "node_GraphExporter",
+      "toNode": "node_CodeNode",
+      "label": "References: Property: Namespace"
+    },
+    {
+      "id": "edge_171",
+      "fromNode": "node_GraphExporter",
+      "toNode": "node_CodeNode",
+      "label": "References: Property: FilePath"
+    },
+    {
+      "id": "edge_172",
+      "fromNode": "node_GraphExporter",
+      "toNode": "node_CodeNode",
+      "label": "References: Property: Count"
+    },
+    {
+      "id": "edge_173",
+      "fromNode": "node_GraphExporter",
+      "toNode": "node_CodeEdge",
+      "label": "References: Property: Count"
+    },
+    {
+      "id": "edge_174",
+      "fromNode": "node_GraphExporter",
+      "toNode": "node_CodeEdge",
+      "label": "References: Property: Source"
+    },
+    {
+      "id": "edge_175",
+      "fromNode": "node_GraphExporter",
+      "toNode": "node_CodeEdge",
+      "label": "References: Property: Target"
+    },
+    {
+      "id": "edge_176",
+      "fromNode": "node_GraphExporter",
+      "toNode": "node_CodeEdge",
+      "label": "References: Property: Type"
+    },
+    {
+      "id": "edge_177",
+      "fromNode": "node_GraphExporter",
+      "toNode": "node_CodeEdge",
+      "label": "References: Property: Details"
+    },
+    {
+      "id": "edge_178",
+      "fromNode": "node_GraphExporter",
+      "toNode": "node_ApiTypeNode",
+      "label": "References: Property: Values"
+    },
+    {
+      "id": "edge_179",
+      "fromNode": "node_CodeGraph",
+      "toNode": "node_CodeNode",
+      "label": "References: Property: Nodes"
+    },
+    {
+      "id": "edge_180",
+      "fromNode": "node_CodeGraph",
+      "toNode": "node_CodeEdge",
+      "label": "References: Property: Edges"
+    },
+    {
+      "id": "edge_181",
+      "fromNode": "node_CodeGraph",
+      "toNode": "node_CodeNode",
+      "label": "Calls: Method: ContainsKey()"
+    },
+    {
+      "id": "edge_182",
+      "fromNode": "node_CodeGraph",
+      "toNode": "node_CodeEdge",
+      "label": "Calls: Method: Exists()"
+    },
+    {
+      "id": "edge_183",
+      "fromNode": "node_CodeGraph",
+      "toNode": "node_CodeEdge",
+      "label": "References: Property: Source"
+    },
+    {
+      "id": "edge_184",
+      "fromNode": "node_CodeGraph",
+      "toNode": "node_CodeEdge",
+      "label": "References: Property: Target"
+    },
+    {
+      "id": "edge_185",
+      "fromNode": "node_CodeGraph",
+      "toNode": "node_CodeEdge",
+      "label": "References: Property: Type"
+    },
+    {
+      "id": "edge_186",
+      "fromNode": "node_CodeGraph",
+      "toNode": "node_CodeEdge",
+      "label": "References: Property: Details"
+    },
+    {
+      "id": "edge_187",
+      "fromNode": "node_CodeGraph",
+      "toNode": "node_CodeEdge",
+      "label": "Calls: Method: Add()"
+    },
+    {
+      "id": "edge_188",
+      "fromNode": "node_ApiTypeNode",
+      "toNode": "node_ApiFieldNode",
+      "label": "References: Property: Fields"
+    },
+    {
+      "id": "edge_189",
+      "fromNode": "node_ApiTypeNode",
+      "toNode": "node_ApiPropertyNode",
+      "label": "References: Property: Properties"
+    },
+    {
+      "id": "edge_190",
+      "fromNode": "node_ApiTypeNode",
+      "toNode": "node_ApiMethodNode",
+      "label": "References: Property: Methods"
+    },
+    {
+      "id": "edge_191",
+      "fromNode": "node_ApiMethodNode",
+      "toNode": "node_ApiParameterNode",
+      "label": "References: Property: Parameters"
+    },
+    {
+      "id": "edge_192",
+      "fromNode": "node_ProjectLoader",
+      "toNode": "node_RazorPreProcessor",
+      "label": "Calls: Method: PreProcess()"
+    },
+    {
+      "id": "edge_193",
+      "fromNode": "node_RazorPreProcessor",
+      "toNode": "node_Regex",
+      "label": "References: Field: UsingRegex"
+    },
+    {
+      "id": "edge_194",
+      "fromNode": "node_RazorPreProcessor",
+      "toNode": "node_Regex",
+      "label": "References: Field: InheritsRegex"
+    },
+    {
+      "id": "edge_195",
+      "fromNode": "node_StubGenerator",
+      "toNode": "node_TypeResolver",
+      "label": "Calls: Method: Parse()"
+    },
+    {
+      "id": "edge_196",
+      "fromNode": "node_StubGenerator",
+      "toNode": "node_TypeSignature",
+      "label": "References: Property: FullName"
+    },
+    {
+      "id": "edge_197",
+      "fromNode": "node_StubGenerator",
+      "toNode": "node_TypeSignature",
+      "label": "References: Property: Count"
+    },
+    {
+      "id": "edge_198",
+      "fromNode": "node_StubGenerator",
+      "toNode": "node_TypeSignature",
+      "label": "References: Property: GenericArguments"
+    },
+    {
+      "id": "edge_199",
+      "fromNode": "node_StubGenerator",
+      "toNode": "node_TypeSignature",
+      "label": "References: Property: IsArray"
+    },
+    {
+      "id": "edge_200",
+      "fromNode": "node_StubGenerator",
+      "toNode": "node_TypeSignature",
+      "label": "References: Property: CleanName"
+    }
+  ]
+}

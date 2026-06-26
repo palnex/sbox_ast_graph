@@ -1,0 +1,1397 @@
+{
+  "nodes": [
+    {
+      "id": "Formulas",
+      "file": "Formulas-test.cs",
+      "namespace": "\u003Cglobal namespace\u003E"
+    },
+    {
+      "id": "GameManager",
+      "file": "GameManager-test.cs",
+      "namespace": "\u003Cglobal namespace\u003E"
+    },
+    {
+      "id": "GameMetadata",
+      "file": "GameMetadata-test.cs",
+      "namespace": "\u003Cglobal namespace\u003E"
+    },
+    {
+      "id": "Program",
+      "file": "Program.cs",
+      "namespace": "SboxAstGraph"
+    },
+    {
+      "id": "ProgressionMath",
+      "file": "ProgressionMath-test.cs",
+      "namespace": "\u003Cglobal namespace\u003E"
+    },
+    {
+      "id": "StatDefinition",
+      "file": "StatRegistry-test.cs",
+      "namespace": "\u003Cglobal namespace\u003E"
+    },
+    {
+      "id": "StatRegistry",
+      "file": "StatRegistry-test.cs",
+      "namespace": "\u003Cglobal namespace\u003E"
+    },
+    {
+      "id": "SwarmManager",
+      "file": "SwarmManager-test.cs",
+      "namespace": "\u003Cglobal namespace\u003E"
+    },
+    {
+      "id": "SwarmRenderObject",
+      "file": "SwarmManager-test.cs",
+      "namespace": "\u003Cglobal namespace\u003E"
+    },
+    {
+      "id": "TowerComponent",
+      "file": "TowerComponent-test.cs",
+      "namespace": "\u003Cglobal namespace\u003E"
+    },
+    {
+      "id": "ShopMaster",
+      "file": "ShopMaster.razor",
+      "namespace": "SboxGeneratedRazorSpace"
+    },
+    {
+      "id": "ShopTowerPanel",
+      "file": "ShopTowerPanel.razor",
+      "namespace": "SboxGeneratedRazorSpace"
+    },
+    {
+      "id": "UpgradeNode",
+      "file": "UpgradeNode.razor",
+      "namespace": "SboxGeneratedRazorSpace"
+    },
+    {
+      "id": "CodeAnalyzer",
+      "file": "CodeAnalyzer.cs",
+      "namespace": "SboxAstGraph.Analysis"
+    },
+    {
+      "id": "EngineAnalyzer",
+      "file": "EngineAnalyzer.cs",
+      "namespace": "SboxAstGraph.Analysis"
+    },
+    {
+      "id": "EngineApiParser",
+      "file": "EngineApiParser.cs",
+      "namespace": "SboxAstGraph.Analysis"
+    },
+    {
+      "id": "QueryEngine",
+      "file": "QueryEngine.cs",
+      "namespace": "SboxAstGraph.Analysis"
+    },
+    {
+      "id": "CacheNode",
+      "file": "QueryEngine.cs",
+      "namespace": "SboxAstGraph.Analysis"
+    },
+    {
+      "id": "CacheLink",
+      "file": "QueryEngine.cs",
+      "namespace": "SboxAstGraph.Analysis"
+    },
+    {
+      "id": "CacheGraph",
+      "file": "QueryEngine.cs",
+      "namespace": "SboxAstGraph.Analysis"
+    },
+    {
+      "id": "SemanticWalker",
+      "file": "SemanticWalker.cs",
+      "namespace": "SboxAstGraph.Analysis"
+    },
+    {
+      "id": "TypeResolver",
+      "file": "TypeResolver.cs",
+      "namespace": "SboxAstGraph.Analysis"
+    },
+    {
+      "id": "GraphExporter",
+      "file": "GraphExporter.cs",
+      "namespace": "SboxAstGraph.Exporters"
+    },
+    {
+      "id": "TypeFilter",
+      "file": "TypeFilter.cs",
+      "namespace": "SboxAstGraph.Filtering"
+    },
+    {
+      "id": "CodeNode",
+      "file": "CodeGraph.cs",
+      "namespace": "SboxAstGraph.Model"
+    },
+    {
+      "id": "CodeEdge",
+      "file": "CodeGraph.cs",
+      "namespace": "SboxAstGraph.Model"
+    },
+    {
+      "id": "CodeGraph",
+      "file": "CodeGraph.cs",
+      "namespace": "SboxAstGraph.Model"
+    },
+    {
+      "id": "ApiTypeNode",
+      "file": "EngineApiModel.cs",
+      "namespace": "SboxAstGraph.Model"
+    },
+    {
+      "id": "ApiFieldNode",
+      "file": "EngineApiModel.cs",
+      "namespace": "SboxAstGraph.Model"
+    },
+    {
+      "id": "ApiPropertyNode",
+      "file": "EngineApiModel.cs",
+      "namespace": "SboxAstGraph.Model"
+    },
+    {
+      "id": "ApiMethodNode",
+      "file": "EngineApiModel.cs",
+      "namespace": "SboxAstGraph.Model"
+    },
+    {
+      "id": "ApiParameterNode",
+      "file": "EngineApiModel.cs",
+      "namespace": "SboxAstGraph.Model"
+    },
+    {
+      "id": "TypeSignature",
+      "file": "TypeSignature.cs",
+      "namespace": "SboxAstGraph.Model"
+    },
+    {
+      "id": "ProjectLoader",
+      "file": "ProjectLoader.cs",
+      "namespace": "SboxAstGraph.Workspace"
+    },
+    {
+      "id": "RazorPreProcessor",
+      "file": "RazorPreProcessor.cs",
+      "namespace": "SboxAstGraph.Workspace"
+    },
+    {
+      "id": "SchemaDownloader",
+      "file": "SchemaDownloader.cs",
+      "namespace": "SboxAstGraph.Workspace"
+    },
+    {
+      "id": "StubGenerator",
+      "file": "StubGenerator.cs",
+      "namespace": "SboxAstGraph.Workspace"
+    }
+  ],
+  "links": [
+    {
+      "source": "Formulas",
+      "target": "StatDefinition",
+      "type": "References",
+      "details": "Property: CardProgression"
+    },
+    {
+      "source": "Formulas",
+      "target": "StatRegistry",
+      "type": "Calls",
+      "details": "Method: Get()"
+    },
+    {
+      "source": "Formulas",
+      "target": "StatDefinition",
+      "type": "References",
+      "details": "Property: CardParams"
+    },
+    {
+      "source": "Formulas",
+      "target": "StatDefinition",
+      "type": "References",
+      "details": "Property: UnlockCost"
+    },
+    {
+      "source": "Formulas",
+      "target": "StatDefinition",
+      "type": "References",
+      "details": "Property: PriceThresholds"
+    },
+    {
+      "source": "Formulas",
+      "target": "StatDefinition",
+      "type": "References",
+      "details": "Property: ShopParams"
+    },
+    {
+      "source": "Formulas",
+      "target": "StatDefinition",
+      "type": "References",
+      "details": "Property: ShopProgression"
+    },
+    {
+      "source": "Formulas",
+      "target": "ProgressionMath",
+      "type": "Calls",
+      "details": "Method: GetLinearBulkCost()"
+    },
+    {
+      "source": "Formulas",
+      "target": "ProgressionMath",
+      "type": "Calls",
+      "details": "Method: GetQuadraticBulkCost()"
+    },
+    {
+      "source": "Formulas",
+      "target": "ProgressionMath",
+      "type": "Calls",
+      "details": "Method: GetGeometricBulkCost()"
+    },
+    {
+      "source": "Formulas",
+      "target": "ProgressionMath",
+      "type": "Calls",
+      "details": "Method: GetLinearAffordableLevels()"
+    },
+    {
+      "source": "Formulas",
+      "target": "ProgressionMath",
+      "type": "Calls",
+      "details": "Method: GetQuadraticAffordableLevels()"
+    },
+    {
+      "source": "Formulas",
+      "target": "ProgressionMath",
+      "type": "Calls",
+      "details": "Method: GetGeometricAffordableLevels()"
+    },
+    {
+      "source": "GameManager",
+      "target": "GameState",
+      "type": "References",
+      "details": "Property: CurrentState"
+    },
+    {
+      "source": "GameManager",
+      "target": "CombatStats",
+      "type": "References",
+      "details": "Property: PermanentCombat"
+    },
+    {
+      "source": "GameManager",
+      "target": "EconomyStats",
+      "type": "References",
+      "details": "Property: PermanentEconomy"
+    },
+    {
+      "source": "GameManager",
+      "target": "WorldStats",
+      "type": "References",
+      "details": "Property: PermanentWorld"
+    },
+    {
+      "source": "GameManager",
+      "target": "SwarmManager",
+      "type": "CallsSingleton",
+      "details": "Method: StartRadialDisintegration()"
+    },
+    {
+      "source": "GameMetadata",
+      "target": "StatDefinition",
+      "type": "References",
+      "details": "Property: FriendlyName"
+    },
+    {
+      "source": "GameMetadata",
+      "target": "StatRegistry",
+      "type": "Calls",
+      "details": "Method: Get()"
+    },
+    {
+      "source": "GameMetadata",
+      "target": "StatDefinition",
+      "type": "References",
+      "details": "Property: FlatUnit"
+    },
+    {
+      "source": "StatDefinition",
+      "target": "StatType",
+      "type": "References",
+      "details": "Property: Type"
+    },
+    {
+      "source": "StatDefinition",
+      "target": "ShopTab",
+      "type": "References",
+      "details": "Property: Tab"
+    },
+    {
+      "source": "StatDefinition",
+      "target": "ProgressionType",
+      "type": "References",
+      "details": "Property: CardProgression"
+    },
+    {
+      "source": "StatDefinition",
+      "target": "ProgressionType",
+      "type": "References",
+      "details": "Property: ShopProgression"
+    },
+    {
+      "source": "StatRegistry",
+      "target": "StatType",
+      "type": "References",
+      "details": "Field: Stats"
+    },
+    {
+      "source": "StatRegistry",
+      "target": "StatDefinition",
+      "type": "References",
+      "details": "Field: Stats"
+    },
+    {
+      "source": "StatRegistry",
+      "target": "StatType",
+      "type": "References",
+      "details": "Property: Count"
+    },
+    {
+      "source": "StatRegistry",
+      "target": "StatDefinition",
+      "type": "References",
+      "details": "Property: Count"
+    },
+    {
+      "source": "StatRegistry",
+      "target": "StatType",
+      "type": "Calls",
+      "details": "Method: Clear()"
+    },
+    {
+      "source": "StatRegistry",
+      "target": "StatDefinition",
+      "type": "Calls",
+      "details": "Method: Clear()"
+    },
+    {
+      "source": "StatRegistry",
+      "target": "StatType",
+      "type": "References",
+      "details": "Property: Values"
+    },
+    {
+      "source": "StatRegistry",
+      "target": "StatDefinition",
+      "type": "References",
+      "details": "Property: Values"
+    },
+    {
+      "source": "StatRegistry",
+      "target": "StatDefinition",
+      "type": "References",
+      "details": "Property: PriceThresholds"
+    },
+    {
+      "source": "StatRegistry",
+      "target": "StatDefinition",
+      "type": "References",
+      "details": "Property: Type"
+    },
+    {
+      "source": "StatRegistry",
+      "target": "StatType",
+      "type": "Calls",
+      "details": "Method: TryGetValue()"
+    },
+    {
+      "source": "StatRegistry",
+      "target": "StatDefinition",
+      "type": "Calls",
+      "details": "Method: TryGetValue()"
+    },
+    {
+      "source": "StatRegistry",
+      "target": "StatDefinition",
+      "type": "References",
+      "details": "Property: CardParams"
+    },
+    {
+      "source": "StatRegistry",
+      "target": "StatDefinition",
+      "type": "References",
+      "details": "Property: ShopParams"
+    },
+    {
+      "source": "SwarmManager",
+      "target": "SwarmRenderObject",
+      "type": "References",
+      "details": "Field: _renderObject"
+    },
+    {
+      "source": "SwarmManager",
+      "target": "GameManager",
+      "type": "CallsSingleton",
+      "details": "Method: AddMoney()"
+    },
+    {
+      "source": "SwarmRenderObject",
+      "target": "SwarmManager",
+      "type": "References",
+      "details": "Field: _manager"
+    },
+    {
+      "source": "SwarmRenderObject",
+      "target": "SwarmManager",
+      "type": "ReferencesSingleton",
+      "details": "Property: UnitModel"
+    },
+    {
+      "source": "SwarmRenderObject",
+      "target": "SwarmManager",
+      "type": "ReferencesSingleton",
+      "details": "Field: _renderCount"
+    },
+    {
+      "source": "SwarmRenderObject",
+      "target": "SwarmManager",
+      "type": "ReferencesSingleton",
+      "details": "Field: _renderTransforms"
+    },
+    {
+      "source": "SwarmRenderObject",
+      "target": "SwarmManager",
+      "type": "ReferencesSingleton",
+      "details": "Field: _renderAttributes"
+    },
+    {
+      "source": "SwarmManager",
+      "target": "GameManager",
+      "type": "ReferencesSingleton",
+      "details": "Property: CurrentState"
+    },
+    {
+      "source": "TowerComponent",
+      "target": "UnitComponent",
+      "type": "References",
+      "details": "Field: _myUnit"
+    },
+    {
+      "source": "TowerComponent",
+      "target": "GameManager",
+      "type": "ReferencesSingleton",
+      "details": "Property: GlobalMaxHealth"
+    },
+    {
+      "source": "TowerComponent",
+      "target": "SwarmManager",
+      "type": "ReferencesSingleton",
+      "details": "Property: Target"
+    },
+    {
+      "source": "TowerComponent",
+      "target": "GameManager",
+      "type": "ReferencesSingleton",
+      "details": "Property: GlobalFireRate"
+    },
+    {
+      "source": "TowerComponent",
+      "target": "GameManager",
+      "type": "ReferencesSingleton",
+      "details": "Property: GlobalExtraBullets"
+    },
+    {
+      "source": "TowerComponent",
+      "target": "GameManager",
+      "type": "ReferencesSingleton",
+      "details": "Property: GlobalBulletSpeed"
+    },
+    {
+      "source": "TowerComponent",
+      "target": "GameManager",
+      "type": "ReferencesSingleton",
+      "details": "Property: GlobalBulletRange"
+    },
+    {
+      "source": "TowerComponent",
+      "target": "GameManager",
+      "type": "ReferencesSingleton",
+      "details": "Property: GlobalDamage"
+    },
+    {
+      "source": "TowerComponent",
+      "target": "SwarmManager",
+      "type": "CallsSingleton",
+      "details": "Method: CheckBulletCollision()"
+    },
+    {
+      "source": "TowerComponent",
+      "target": "SwarmManager",
+      "type": "CallsSingleton",
+      "details": "Method: GetUnitHealth()"
+    },
+    {
+      "source": "TowerComponent",
+      "target": "SwarmManager",
+      "type": "CallsSingleton",
+      "details": "Method: DamageUnit()"
+    },
+    {
+      "source": "TowerComponent",
+      "target": "SwarmManager",
+      "type": "CallsSingleton",
+      "details": "Method: GetUnitPosition()"
+    },
+    {
+      "source": "TowerComponent",
+      "target": "SwarmManager",
+      "type": "CallsSingleton",
+      "details": "Method: IsUnitAlive()"
+    },
+    {
+      "source": "TowerComponent",
+      "target": "GameManager",
+      "type": "ReferencesSingleton",
+      "details": "Property: GlobalRadis"
+    },
+    {
+      "source": "ShopMaster",
+      "target": "GameManager",
+      "type": "ReferencesSingleton",
+      "details": "Property: CurrentState"
+    },
+    {
+      "source": "ShopMaster",
+      "target": "CameraControlComponent",
+      "type": "References",
+      "details": "Property: Camera"
+    },
+    {
+      "source": "ShopMaster",
+      "target": "CameraControlComponent",
+      "type": "References",
+      "details": "Field: _camera"
+    },
+    {
+      "source": "ShopMaster",
+      "target": "ShopTab",
+      "type": "References",
+      "details": "Property: ActiveTab"
+    },
+    {
+      "source": "ShopMaster",
+      "target": "GameManager",
+      "type": "CallsSingleton",
+      "details": "Method: StartRun()"
+    },
+    {
+      "source": "ShopMaster",
+      "target": "GameMetadata",
+      "type": "Calls",
+      "details": "HTML Expression"
+    },
+    {
+      "source": "ShopMaster",
+      "target": "ShopTowerPanel",
+      "type": "UI_NestedComponent",
+      "details": "HTML Tag"
+    },
+    {
+      "source": "ShopTowerPanel",
+      "target": "ShopTab",
+      "type": "References",
+      "details": "Property: Category"
+    },
+    {
+      "source": "ShopTowerPanel",
+      "target": "UpgradeNode",
+      "type": "UI_NestedComponent",
+      "details": "HTML Tag"
+    },
+    {
+      "source": "UpgradeNode",
+      "target": "StatModifierData",
+      "type": "References",
+      "details": "Property: Modifiers"
+    },
+    {
+      "source": "UpgradeNode",
+      "target": "StatType",
+      "type": "References",
+      "details": "Property: TargetStat"
+    },
+    {
+      "source": "UpgradeNode",
+      "target": "GameMetadata",
+      "type": "Calls",
+      "details": "Method: FormatNumber()"
+    },
+    {
+      "source": "UpgradeNode",
+      "target": "GameMetadata",
+      "type": "Calls",
+      "details": "Method: GetRarityNameByLevel()"
+    },
+    {
+      "source": "UpgradeNode",
+      "target": "Formulas",
+      "type": "Calls",
+      "details": "Method: GetRarityUpgradeCost()"
+    },
+    {
+      "source": "UpgradeNode",
+      "target": "StatType",
+      "type": "References",
+      "details": "Property: HasValue"
+    },
+    {
+      "source": "UpgradeNode",
+      "target": "StatType",
+      "type": "References",
+      "details": "Property: Value"
+    },
+    {
+      "source": "UpgradeNode",
+      "target": "StatModifierData",
+      "type": "References",
+      "details": "Property: Count"
+    },
+    {
+      "source": "UpgradeNode",
+      "target": "Formulas",
+      "type": "Calls",
+      "details": "Method: GetCardStatBulkCost()"
+    },
+    {
+      "source": "UpgradeNode",
+      "target": "Formulas",
+      "type": "Calls",
+      "details": "Method: GetCardStatAffordableLevels()"
+    },
+    {
+      "source": "UpgradeNode",
+      "target": "Formulas",
+      "type": "Calls",
+      "details": "Method: GetShopStatBulkCost()"
+    },
+    {
+      "source": "UpgradeNode",
+      "target": "Formulas",
+      "type": "Calls",
+      "details": "Method: GetShopStatAffordableLevels()"
+    },
+    {
+      "source": "UpgradeNode",
+      "target": "Formulas",
+      "type": "Calls",
+      "details": "Method: GetBulkCost()"
+    },
+    {
+      "source": "UpgradeNode",
+      "target": "Formulas",
+      "type": "Calls",
+      "details": "Method: GetAffordableLevels()"
+    },
+    {
+      "source": "CodeAnalyzer",
+      "target": "TypeFilter",
+      "type": "References",
+      "details": "Field: _filter"
+    },
+    {
+      "source": "CodeAnalyzer",
+      "target": "CodeGraph",
+      "type": "Calls",
+      "details": "Method: AddEdge()"
+    },
+    {
+      "source": "CodeAnalyzer",
+      "target": "CodeNode",
+      "type": "References",
+      "details": "Property: Count"
+    },
+    {
+      "source": "CodeAnalyzer",
+      "target": "CodeGraph",
+      "type": "References",
+      "details": "Property: Nodes"
+    },
+    {
+      "source": "CodeAnalyzer",
+      "target": "CodeEdge",
+      "type": "References",
+      "details": "Property: Count"
+    },
+    {
+      "source": "CodeAnalyzer",
+      "target": "CodeGraph",
+      "type": "References",
+      "details": "Property: Edges"
+    },
+    {
+      "source": "EngineAnalyzer",
+      "target": "ApiTypeNode",
+      "type": "References",
+      "details": "Property: Registry"
+    },
+    {
+      "source": "EngineAnalyzer",
+      "target": "EngineApiParser",
+      "type": "Calls",
+      "details": "Method: Parse()"
+    },
+    {
+      "source": "EngineAnalyzer",
+      "target": "ApiTypeNode",
+      "type": "References",
+      "details": "Property: Value"
+    },
+    {
+      "source": "EngineAnalyzer",
+      "target": "StubGenerator",
+      "type": "Calls",
+      "details": "Method: SanitizeName()"
+    },
+    {
+      "source": "EngineAnalyzer",
+      "target": "ApiTypeNode",
+      "type": "References",
+      "details": "Property: Name"
+    },
+    {
+      "source": "EngineAnalyzer",
+      "target": "CodeGraph",
+      "type": "Calls",
+      "details": "Method: AddNode()"
+    },
+    {
+      "source": "EngineAnalyzer",
+      "target": "ApiTypeNode",
+      "type": "References",
+      "details": "Property: Namespace"
+    },
+    {
+      "source": "EngineAnalyzer",
+      "target": "ApiTypeNode",
+      "type": "References",
+      "details": "Property: BaseType"
+    },
+    {
+      "source": "EngineAnalyzer",
+      "target": "TypeResolver",
+      "type": "Calls",
+      "details": "Method: Parse()"
+    },
+    {
+      "source": "EngineAnalyzer",
+      "target": "ApiPropertyNode",
+      "type": "References",
+      "details": "Property: Values"
+    },
+    {
+      "source": "EngineAnalyzer",
+      "target": "ApiTypeNode",
+      "type": "References",
+      "details": "Property: Properties"
+    },
+    {
+      "source": "EngineAnalyzer",
+      "target": "ApiPropertyNode",
+      "type": "References",
+      "details": "Property: PropertyType"
+    },
+    {
+      "source": "EngineAnalyzer",
+      "target": "ApiPropertyNode",
+      "type": "References",
+      "details": "Property: Name"
+    },
+    {
+      "source": "EngineAnalyzer",
+      "target": "ApiFieldNode",
+      "type": "References",
+      "details": "Property: Values"
+    },
+    {
+      "source": "EngineAnalyzer",
+      "target": "ApiTypeNode",
+      "type": "References",
+      "details": "Property: Fields"
+    },
+    {
+      "source": "EngineAnalyzer",
+      "target": "ApiFieldNode",
+      "type": "References",
+      "details": "Property: FieldType"
+    },
+    {
+      "source": "EngineAnalyzer",
+      "target": "ApiFieldNode",
+      "type": "References",
+      "details": "Property: Name"
+    },
+    {
+      "source": "EngineAnalyzer",
+      "target": "ApiMethodNode",
+      "type": "References",
+      "details": "Property: Values"
+    },
+    {
+      "source": "EngineAnalyzer",
+      "target": "ApiTypeNode",
+      "type": "References",
+      "details": "Property: Methods"
+    },
+    {
+      "source": "EngineAnalyzer",
+      "target": "ApiMethodNode",
+      "type": "References",
+      "details": "Property: ReturnType"
+    },
+    {
+      "source": "EngineAnalyzer",
+      "target": "ApiMethodNode",
+      "type": "References",
+      "details": "Property: Name"
+    },
+    {
+      "source": "EngineAnalyzer",
+      "target": "ApiMethodNode",
+      "type": "References",
+      "details": "Property: Parameters"
+    },
+    {
+      "source": "EngineAnalyzer",
+      "target": "ApiParameterNode",
+      "type": "References",
+      "details": "Property: ParameterType"
+    },
+    {
+      "source": "EngineAnalyzer",
+      "target": "ApiParameterNode",
+      "type": "References",
+      "details": "Property: Name"
+    },
+    {
+      "source": "EngineAnalyzer",
+      "target": "CodeNode",
+      "type": "References",
+      "details": "Property: Count"
+    },
+    {
+      "source": "EngineAnalyzer",
+      "target": "CodeGraph",
+      "type": "References",
+      "details": "Property: Nodes"
+    },
+    {
+      "source": "EngineAnalyzer",
+      "target": "CodeEdge",
+      "type": "References",
+      "details": "Property: Count"
+    },
+    {
+      "source": "EngineAnalyzer",
+      "target": "CodeGraph",
+      "type": "References",
+      "details": "Property: Edges"
+    },
+    {
+      "source": "EngineAnalyzer",
+      "target": "ApiTypeNode",
+      "type": "Calls",
+      "details": "Method: TryGetValue()"
+    },
+    {
+      "source": "EngineAnalyzer",
+      "target": "TypeSignature",
+      "type": "References",
+      "details": "Property: FullName"
+    },
+    {
+      "source": "EngineAnalyzer",
+      "target": "ApiTypeNode",
+      "type": "References",
+      "details": "Property: Values"
+    },
+    {
+      "source": "EngineAnalyzer",
+      "target": "TypeSignature",
+      "type": "References",
+      "details": "Property: CleanName"
+    },
+    {
+      "source": "EngineAnalyzer",
+      "target": "ApiTypeNode",
+      "type": "References",
+      "details": "Property: IsValueType"
+    },
+    {
+      "source": "EngineAnalyzer",
+      "target": "CodeGraph",
+      "type": "Calls",
+      "details": "Method: AddEdge()"
+    },
+    {
+      "source": "EngineAnalyzer",
+      "target": "TypeSignature",
+      "type": "References",
+      "details": "Property: GenericArguments"
+    },
+    {
+      "source": "EngineApiParser",
+      "target": "ApiTypeNode",
+      "type": "Calls",
+      "details": "Method: TryGetValue()"
+    },
+    {
+      "source": "EngineApiParser",
+      "target": "ApiFieldNode",
+      "type": "Calls",
+      "details": "Method: ContainsKey()"
+    },
+    {
+      "source": "EngineApiParser",
+      "target": "ApiTypeNode",
+      "type": "References",
+      "details": "Property: Fields"
+    },
+    {
+      "source": "EngineApiParser",
+      "target": "ApiPropertyNode",
+      "type": "Calls",
+      "details": "Method: ContainsKey()"
+    },
+    {
+      "source": "EngineApiParser",
+      "target": "ApiTypeNode",
+      "type": "References",
+      "details": "Property: Properties"
+    },
+    {
+      "source": "EngineApiParser",
+      "target": "ApiMethodNode",
+      "type": "Calls",
+      "details": "Method: ContainsKey()"
+    },
+    {
+      "source": "EngineApiParser",
+      "target": "ApiTypeNode",
+      "type": "References",
+      "details": "Property: Methods"
+    },
+    {
+      "source": "EngineApiParser",
+      "target": "ApiParameterNode",
+      "type": "Calls",
+      "details": "Method: Add()"
+    },
+    {
+      "source": "EngineApiParser",
+      "target": "ApiMethodNode",
+      "type": "References",
+      "details": "Property: Parameters"
+    },
+    {
+      "source": "CacheGraph",
+      "target": "CacheNode",
+      "type": "References",
+      "details": "Property: nodes"
+    },
+    {
+      "source": "CacheGraph",
+      "target": "CacheLink",
+      "type": "References",
+      "details": "Property: links"
+    },
+    {
+      "source": "QueryEngine",
+      "target": "CacheGraph",
+      "type": "References",
+      "details": "Field: _graph"
+    },
+    {
+      "source": "QueryEngine",
+      "target": "CacheLink",
+      "type": "References",
+      "details": "Field: _adjacencyList"
+    },
+    {
+      "source": "QueryEngine",
+      "target": "CacheGraph",
+      "type": "References",
+      "details": "Property: nodes"
+    },
+    {
+      "source": "QueryEngine",
+      "target": "CacheNode",
+      "type": "References",
+      "details": "Property: id"
+    },
+    {
+      "source": "QueryEngine",
+      "target": "CacheGraph",
+      "type": "References",
+      "details": "Property: links"
+    },
+    {
+      "source": "QueryEngine",
+      "target": "CacheLink",
+      "type": "Calls",
+      "details": "Method: ContainsKey()"
+    },
+    {
+      "source": "QueryEngine",
+      "target": "CacheLink",
+      "type": "References",
+      "details": "Property: source"
+    },
+    {
+      "source": "QueryEngine",
+      "target": "CacheLink",
+      "type": "Calls",
+      "details": "Method: Add()"
+    },
+    {
+      "source": "QueryEngine",
+      "target": "CacheLink",
+      "type": "Calls",
+      "details": "Method: TryGetValue()"
+    },
+    {
+      "source": "QueryEngine",
+      "target": "CacheLink",
+      "type": "References",
+      "details": "Property: target"
+    },
+    {
+      "source": "QueryEngine",
+      "target": "CacheLink",
+      "type": "Calls",
+      "details": "Method: Reverse()"
+    },
+    {
+      "source": "QueryEngine",
+      "target": "CacheLink",
+      "type": "References",
+      "details": "Property: Count"
+    },
+    {
+      "source": "QueryEngine",
+      "target": "CacheLink",
+      "type": "References",
+      "details": "Property: type"
+    },
+    {
+      "source": "QueryEngine",
+      "target": "CacheLink",
+      "type": "References",
+      "details": "Property: details"
+    },
+    {
+      "source": "SemanticWalker",
+      "target": "CSharpSyntaxWalker",
+      "type": "Inherits",
+      "details": "Base Class"
+    },
+    {
+      "source": "SemanticWalker",
+      "target": "SemanticModel",
+      "type": "References",
+      "details": "Field: _semanticModel"
+    },
+    {
+      "source": "SemanticWalker",
+      "target": "TypeFilter",
+      "type": "References",
+      "details": "Field: _filter"
+    },
+    {
+      "source": "SemanticWalker",
+      "target": "CodeGraph",
+      "type": "References",
+      "details": "Field: _graph"
+    },
+    {
+      "source": "SemanticWalker",
+      "target": "CodeGraph",
+      "type": "Calls",
+      "details": "Method: AddNode()"
+    },
+    {
+      "source": "SemanticWalker",
+      "target": "CodeGraph",
+      "type": "Calls",
+      "details": "Method: AddEdge()"
+    },
+    {
+      "source": "SemanticWalker",
+      "target": "TypeFilter",
+      "type": "Calls",
+      "details": "Method: IsBlacklisted()"
+    },
+    {
+      "source": "TypeResolver",
+      "target": "Regex",
+      "type": "References",
+      "details": "Field: MetadataCleanupRegex"
+    },
+    {
+      "source": "TypeResolver",
+      "target": "TypeSignature",
+      "type": "References",
+      "details": "Property: IsByRef"
+    },
+    {
+      "source": "TypeResolver",
+      "target": "TypeSignature",
+      "type": "References",
+      "details": "Property: RawName"
+    },
+    {
+      "source": "TypeResolver",
+      "target": "TypeSignature",
+      "type": "References",
+      "details": "Property: IsArray"
+    },
+    {
+      "source": "TypeResolver",
+      "target": "TypeSignature",
+      "type": "References",
+      "details": "Property: IsPointer"
+    },
+    {
+      "source": "TypeResolver",
+      "target": "TypeSignature",
+      "type": "References",
+      "details": "Property: FullName"
+    },
+    {
+      "source": "TypeResolver",
+      "target": "TypeSignature",
+      "type": "Calls",
+      "details": "Method: Add()"
+    },
+    {
+      "source": "TypeResolver",
+      "target": "TypeSignature",
+      "type": "References",
+      "details": "Property: GenericArguments"
+    },
+    {
+      "source": "TypeResolver",
+      "target": "TypeSignature",
+      "type": "References",
+      "details": "Property: CleanName"
+    },
+    {
+      "source": "GraphExporter",
+      "target": "CodeNode",
+      "type": "References",
+      "details": "Property: Values"
+    },
+    {
+      "source": "GraphExporter",
+      "target": "CodeGraph",
+      "type": "References",
+      "details": "Property: Nodes"
+    },
+    {
+      "source": "GraphExporter",
+      "target": "CodeGraph",
+      "type": "References",
+      "details": "Property: Edges"
+    },
+    {
+      "source": "GraphExporter",
+      "target": "CodeNode",
+      "type": "References",
+      "details": "Property: Id"
+    },
+    {
+      "source": "GraphExporter",
+      "target": "CodeNode",
+      "type": "References",
+      "details": "Property: Namespace"
+    },
+    {
+      "source": "GraphExporter",
+      "target": "CodeNode",
+      "type": "References",
+      "details": "Property: FilePath"
+    },
+    {
+      "source": "GraphExporter",
+      "target": "CodeNode",
+      "type": "References",
+      "details": "Property: Count"
+    },
+    {
+      "source": "GraphExporter",
+      "target": "CodeEdge",
+      "type": "References",
+      "details": "Property: Count"
+    },
+    {
+      "source": "GraphExporter",
+      "target": "CodeEdge",
+      "type": "References",
+      "details": "Property: Source"
+    },
+    {
+      "source": "GraphExporter",
+      "target": "CodeEdge",
+      "type": "References",
+      "details": "Property: Target"
+    },
+    {
+      "source": "GraphExporter",
+      "target": "CodeEdge",
+      "type": "References",
+      "details": "Property: Type"
+    },
+    {
+      "source": "GraphExporter",
+      "target": "CodeEdge",
+      "type": "References",
+      "details": "Property: Details"
+    },
+    {
+      "source": "GraphExporter",
+      "target": "ApiTypeNode",
+      "type": "References",
+      "details": "Property: Values"
+    },
+    {
+      "source": "CodeGraph",
+      "target": "CodeNode",
+      "type": "References",
+      "details": "Property: Nodes"
+    },
+    {
+      "source": "CodeGraph",
+      "target": "CodeEdge",
+      "type": "References",
+      "details": "Property: Edges"
+    },
+    {
+      "source": "CodeGraph",
+      "target": "CodeNode",
+      "type": "Calls",
+      "details": "Method: ContainsKey()"
+    },
+    {
+      "source": "CodeGraph",
+      "target": "CodeEdge",
+      "type": "Calls",
+      "details": "Method: Exists()"
+    },
+    {
+      "source": "CodeGraph",
+      "target": "CodeEdge",
+      "type": "References",
+      "details": "Property: Source"
+    },
+    {
+      "source": "CodeGraph",
+      "target": "CodeEdge",
+      "type": "References",
+      "details": "Property: Target"
+    },
+    {
+      "source": "CodeGraph",
+      "target": "CodeEdge",
+      "type": "References",
+      "details": "Property: Type"
+    },
+    {
+      "source": "CodeGraph",
+      "target": "CodeEdge",
+      "type": "References",
+      "details": "Property: Details"
+    },
+    {
+      "source": "CodeGraph",
+      "target": "CodeEdge",
+      "type": "Calls",
+      "details": "Method: Add()"
+    },
+    {
+      "source": "ApiTypeNode",
+      "target": "ApiFieldNode",
+      "type": "References",
+      "details": "Property: Fields"
+    },
+    {
+      "source": "ApiTypeNode",
+      "target": "ApiPropertyNode",
+      "type": "References",
+      "details": "Property: Properties"
+    },
+    {
+      "source": "ApiTypeNode",
+      "target": "ApiMethodNode",
+      "type": "References",
+      "details": "Property: Methods"
+    },
+    {
+      "source": "ApiMethodNode",
+      "target": "ApiParameterNode",
+      "type": "References",
+      "details": "Property: Parameters"
+    },
+    {
+      "source": "ProjectLoader",
+      "target": "RazorPreProcessor",
+      "type": "Calls",
+      "details": "Method: PreProcess()"
+    },
+    {
+      "source": "RazorPreProcessor",
+      "target": "Regex",
+      "type": "References",
+      "details": "Field: UsingRegex"
+    },
+    {
+      "source": "RazorPreProcessor",
+      "target": "Regex",
+      "type": "References",
+      "details": "Field: InheritsRegex"
+    },
+    {
+      "source": "StubGenerator",
+      "target": "TypeResolver",
+      "type": "Calls",
+      "details": "Method: Parse()"
+    },
+    {
+      "source": "StubGenerator",
+      "target": "TypeSignature",
+      "type": "References",
+      "details": "Property: FullName"
+    },
+    {
+      "source": "StubGenerator",
+      "target": "TypeSignature",
+      "type": "References",
+      "details": "Property: Count"
+    },
+    {
+      "source": "StubGenerator",
+      "target": "TypeSignature",
+      "type": "References",
+      "details": "Property: GenericArguments"
+    },
+    {
+      "source": "StubGenerator",
+      "target": "TypeSignature",
+      "type": "References",
+      "details": "Property: IsArray"
+    },
+    {
+      "source": "StubGenerator",
+      "target": "TypeSignature",
+      "type": "References",
+      "details": "Property: CleanName"
+    }
+  ]
+}

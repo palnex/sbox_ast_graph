@@ -1,0 +1,71 @@
+@using Sandbox;
+@using Sandbox.UI;
+@using UI.Shared;
+@using System;
+@inherits Panel
+
+<div class="items-grid">
+	@if (ShopManager.Instance != null)
+	{
+		var playerGold = GameManager.Instance?.Money ?? 0;
+
+		// Автоматично шукаємо всі статі, які належать до поточної вкладки магазину
+		var statsInThisCategory = System.Enum.GetValues<StatType>()
+			.Cast<StatType>()
+			.Where(st => StatRegistry.Get(st).Tab == Category);
+
+		@foreach (var statType in statsInThisCategory)
+		{
+			var currentLvl = ShopManager.Instance.GetItemLevel(statType);
+			var def = StatRegistry.Get(statType);
+
+			// Зчитуємо силу кроку з другого параметра масиву
+			double stepValue = (def.ShopParams != null && def.ShopParams.Length >= 2) ? def.ShopParams[1] : 1.0;
+
+			// Віртуальний список модифікаторів для коректного відображення в UpgradeNode
+			// Визначаємо, чи є цей конкретний стат відсотковим (Multiplier)
+			bool isMultiplier = statType == StatType.CritChance || statType == StatType.ProjectileSpeed || statType ==
+	StatType.EnemySpawnRate;
+
+			// Віртуальний список модифікаторів для коректного відображення в UpgradeNode
+			var modifiers = new List<StatModifierData>
+			{
+				new StatModifierData
+				{
+					Stat = statType,
+					Flat = isMultiplier ? 0 : stepValue,
+					Multiplier = isMultiplier ? stepValue : 0
+				}
+			};
+
+			// Передаємо параметри цін прямо з реєстру
+			double baseCost = def.ShopParams[0];
+			double costMultiplier = def.ShopParams[1];
+
+			<UpgradeNode @key="@statType" Title="@def.FriendlyName" CurrentLevel="@(Math.Max(1, currentLvl))" MinLevel="@(1)"
+						 MaxLevel="@(999999)" BaseCost="@baseCost" CostMultiplier="@costMultiplier" Modifiers="@modifiers"
+						 PlayerGold="@playerGold" Multiplier="@Multiplier" IsMaxSelected="@IsMaxSelected" IsRefundMode="@IsRefundMode"
+						 TargetStat="@statType" IsCardUpgrade="@false"
+						 OnPurchaseRequested="@((int count, double cost) => PurchaseItem(statType, count, cost))"
+						 OnRefundRequested="@((int count, double cost) => RefundItem(statType, count, cost))"
+						 OnPurchaseCompleted="@StateHasChanged" />
+		}
+	}
+</div>
+
+@code {
+	[Parameter] public ShopTab Category { get; set; } = ShopTab.Tower;
+	[Parameter] public int Multiplier { get; set; } = 1;
+	[Parameter] public bool IsMaxSelected { get; set; } = false;
+	[Parameter] public bool IsRefundMode { get; set; } = false;
+
+	private void PurchaseItem(StatType stat, int count, double cost)
+	{
+		ShopManager.Instance?.TryPurchaseBulkUpgrade(stat, count, cost);
+	}
+
+	private void RefundItem(StatType stat, int count, double cost)
+	{
+		ShopManager.Instance?.TryRefundBulkUpgrade(stat, count, cost);
+	}
+}

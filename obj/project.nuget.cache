@@ -1,0 +1,14 @@
+{
+  "version": 2,
+  "dgSpecHash": "MQMXqdZ9Sv0=",
+  "success": true,
+  "projectFilePath": "C:\\Users\\yenro\\Desktop\\sbox_ast_graph\\SboxAstGraph.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\yenro\\.nuget\\packages\\facepunch.assemblyschema\\1.0.13\\facepunch.assemblyschema.1.0.13.nupkg.sha512",
+    "C:\\Users\\yenro\\.nuget\\packages\\microsoft.codeanalysis.analyzers\\3.3.4\\microsoft.codeanalysis.analyzers.3.3.4.nupkg.sha512",
+    "C:\\Users\\yenro\\.nuget\\packages\\microsoft.codeanalysis.common\\4.12.0\\microsoft.codeanalysis.common.4.12.0.nupkg.sha512",
+    "C:\\Users\\yenro\\.nuget\\packages\\microsoft.codeanalysis.csharp\\4.12.0\\microsoft.codeanalysis.csharp.4.12.0.nupkg.sha512",
+    "C:\\Users\\yenro\\.nuget\\packages\\mono.cecil\\0.11.6\\mono.cecil.0.11.6.nupkg.sha512"
+  ],
+  "logs": []
+}

@@ -1,0 +1,44 @@
+{
+  "collapse-filter": false,
+  "search": "-file:.canvas",
+  "showTags": false,
+  "showAttachments": false,
+  "hideUnresolved": false,
+  "showOrphans": true,
+  "collapse-color-groups": false,
+  "colorGroups": [
+    {
+      "query": "tag:#user/ui",
+      "color": {
+        "a": 1,
+        "rgb": 2847459
+      }
+    },
+    {
+      "query": "tag:#user/logic",
+      "color": {
+        "a": 1,
+        "rgb": 11481885
+      }
+    },
+    {
+      "query": "tag:#user/singleton",
+      "color": {
+        "a": 1,
+        "rgb": 2883328
+      }
+    }
+  ],
+  "collapse-display": false,
+  "showArrow": true,
+  "textFadeMultiplier": -3,
+  "nodeSizeMultiplier": 2.57552083333333,
+  "lineSizeMultiplier": 2.49895833333333,
+  "collapse-forces": false,
+  "centerStrength": 0.427083333333333,
+  "repelStrength": 16.9791666666667,
+  "linkStrength": 1,
+  "linkDistance": 145,
+  "scale": 0.22920135941749045,
+  "close": false
+}
