@@ -13,3 +13,7 @@ api.json
 .obsidian/workspace.json
 .obsidian/graph.json
 .obsidian/workspace-mobile.json
+
+# Local test files
+*-test.cs
+*.razor
