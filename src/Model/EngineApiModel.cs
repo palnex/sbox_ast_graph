@@ -12,6 +12,7 @@ namespace SboxAstGraph.Model
         public bool IsInterface { get; set; }
         public bool IsEnum { get; set; }
         public bool IsValueType { get; set; }
+        public bool IsAttribute { get; set; }
         public string? Summary { get; set; }
 
         // Використовуємо DocId як ключ для 100% унікальності та запобігання затиранню

@@ -182,7 +182,7 @@ namespace SboxAstGraph
 
                     Console.WriteLine($"\n--- Експорт API рушія у: {engineOutPath} ---");
                     var exporter = new GraphExporter(engineOutPath);
-                    exporter.ExportEngineApi(apiGraph, engineAnalyzer.Registry);
+                    exporter.ExportEngineApi(apiGraph, engineAnalyzer); // <- Замінено на analyzer
                 }
             }
 

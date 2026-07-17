@@ -1,0 +1,15 @@
+# .NET Build outputs
+bin/
+obj/
+
+# Test output directory
+output_test/
+temp_api_stub.cs
+
+# Local api schema (if you don't want to push 10MB api.json to GitHub)
+api.json
+
+# Obsidian local workspace metadata (prevents commit noise)
+.obsidian/workspace.json
+.obsidian/graph.json
+.obsidian/workspace-mobile.json

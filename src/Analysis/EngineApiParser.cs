@@ -19,6 +19,11 @@ namespace SboxAstGraph.Analysis
                 // Якщо тип уже є в реєстрі (наприклад, partial клас або дублікат розширень)
                 if (!registry.TryGetValue(fullName, out var typeNode))
                 {
+                    // Автоматично визначаємо, чи є клас атрибутом (як-от [Property])
+                    bool isAttr = fullName.EndsWith("Attribute", StringComparison.OrdinalIgnoreCase) ||
+                                  (rawType.BaseType != null && rawType.BaseType.EndsWith("Attribute", StringComparison.OrdinalIgnoreCase)) ||
+                                  (rawType.BaseType != null && rawType.BaseType.Contains("System.Attribute"));
+
                     typeNode = new ApiTypeNode
                     {
                         Name = rawType.Name ?? string.Empty,
@@ -28,6 +33,7 @@ namespace SboxAstGraph.Analysis
                         IsInterface = rawType.IsInterface,
                         IsEnum = rawType.IsEnum,
                         IsValueType = rawType.IsEnum || rawType.BaseType == "System.ValueType",
+                        IsAttribute = isAttr, // Призначаємо автоматично визначений статус
                         Summary = rawType.Documentation?.Summary
                     };
                     registry[fullName] = typeNode;
