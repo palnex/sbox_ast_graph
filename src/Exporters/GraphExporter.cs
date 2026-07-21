@@ -5,12 +5,18 @@ using System.Linq;
 using System.Text.Json;
 using SboxAstGraph.Model;
 using SboxAstGraph.Analysis;
+using SboxAstGraph.Workspace;
+using System.Threading.Tasks;
 
 namespace SboxAstGraph.Exporters
 {
     public class GraphExporter
     {
         private readonly string _outPath;
+
+        // --- НОВІ ПОЛЯ ДЛЯ ШІ-ІНДЕКСАЦІЇ ---
+        private readonly List<DocumentItem> _chunksToIndex = new();
+        private readonly LibrarianClient _librarianClient = new();
 
         public GraphExporter(string outPath)
         {
@@ -28,7 +34,9 @@ namespace SboxAstGraph.Exporters
 
         private void ExportJson(CodeGraph graph)
         {
-            string jsonPath = Path.Combine(_outPath, "graph.json");
+            string vecPath = Path.Combine(_outPath, "vec");
+            Directory.CreateDirectory(vecPath);
+            string jsonPath = Path.Combine(vecPath, "graph.json");
             var exportData = new
             {
                 nodes = graph.Nodes.Values.Select(n => new { id = n.Id, file = Path.GetFileName(n.FilePath), @namespace = n.Namespace }),
@@ -48,12 +56,22 @@ namespace SboxAstGraph.Exporters
                 bool isUi = node.Namespace == "SboxGeneratedRazorSpace" || node.FilePath.EndsWith(".razor", StringComparison.OrdinalIgnoreCase);
                 string typeLabel = isUi ? "razor_component" : "class";
 
+                // --- БЕЗПЕЧНА ВСТАВКА ДЛЯ ШІ ---
+                string cleanNamespace = string.IsNullOrEmpty(node.Namespace) || node.Namespace == "<global namespace>"
+                    ? "global"
+                    : node.Namespace.Replace("<", "").Replace(">", "").Trim();
+
+                _chunksToIndex.Add(new DocumentItem
+                {
+                    id = $"C:{node.Id}",
+                    fqn = node.Id,
+                    type = typeLabel,
+                    text = $"{typeLabel.ToUpper()}: {node.Id}. Namespace: {cleanNamespace}. Source file: {Path.GetFileName(node.FilePath)}."
+                });
+                // ------------------------------
+
                 using (var writer = new StreamWriter(notePath))
                 {
-                    string cleanNamespace = string.IsNullOrEmpty(node.Namespace) || node.Namespace == "<global namespace>"
-                        ? "global"
-                        : node.Namespace.Replace("<", "").Replace(">", "").Trim();
-
                     writer.WriteLine("---");
                     writer.WriteLine($"type: {typeLabel}");
                     writer.WriteLine($"namespace: {cleanNamespace}");
@@ -72,7 +90,8 @@ namespace SboxAstGraph.Exporters
 
                     writer.WriteLine("## Out");
                     writer.WriteLine();
-                    var outgoing = graph.Edges.Where(e => e.Source == node.Id).ToList();
+                    // Беремо ТІЛЬКИ твої власні зв'язки (без префіксу Engine_)
+                    var outgoing = graph.Edges.Where(e => e.Source == node.Id && !e.Type.StartsWith("Engine_")).ToList();
                     if (outgoing.Count > 0)
                     {
                         foreach (var edge in outgoing)
@@ -100,6 +119,27 @@ namespace SboxAstGraph.Exporters
                     else
                     {
                         writer.WriteLine("*None*");
+                    }
+
+                    // --- СЕКЦІЯ ДВИГУНА ТЕПЕР У САМОМУ НИЗУ ФАЙЛУ ---
+                    if (Filtering.TypeFilter.IncludeEngineLinks)
+                    {
+                        writer.WriteLine();
+                        writer.WriteLine("## Engine API Dependencies");
+                        writer.WriteLine();
+                        var engineDeps = graph.Edges.Where(e => e.Source == node.Id && e.Type.StartsWith("Engine_")).ToList();
+                        if (engineDeps.Count > 0)
+                        {
+                            foreach (var edge in engineDeps)
+                            {
+                                string cleanType = edge.Type.Replace("Engine_", "");
+                                writer.WriteLine($"- ─[{cleanType}]─> [[{edge.Target}]]: `{edge.Details}`");
+                            }
+                        }
+                        else
+                        {
+                            writer.WriteLine("*None*");
+                        }
                     }
                 }
             }
@@ -181,12 +221,60 @@ namespace SboxAstGraph.Exporters
             // 2. Генеруємо індивідуальні картки для кожного типу двигуна
             foreach (var node in graph.Nodes.Values)
             {
-                // Наша головна перевага: файли лежать у плоскій папці з унікальними іменами (Sandbox.UI.Button.md)
                 string notePath = Path.Combine(_outPath, $"{node.Id}.md");
 
                 // Знаходимо опис типу за його ID
                 var richType = registry.Values.FirstOrDefault(t =>
                     string.Equals(EngineAnalyzer.GetUniqueId(t.FullName), node.Id, StringComparison.OrdinalIgnoreCase));
+
+                // --- БЕЗПЕЧНА ВСТАВКА ДЛЯ ШІ ---
+                if (richType != null)
+                {
+                    string fqn = richType.FullName;
+                    string summaryText = string.IsNullOrEmpty(richType.Summary) ? "No description." : richType.Summary.Trim();
+
+                    // А. Додаємо сам Клас/Енум
+                    _chunksToIndex.Add(new DocumentItem
+                    {
+                        id = $"C:{node.Id}",
+                        fqn = fqn,
+                        type = richType.IsEnum ? "enum" : "class",
+                        text = $"{(richType.IsEnum ? "ENUM" : "CLASS")}: {fqn}. Summary: {summaryText}"
+                    });
+
+                    // Б. Додаємо методи класу
+                    foreach (var method in richType.Methods.Values)
+                    {
+                        if (method.IsPublic)
+                        {
+                            string methodSummary = string.IsNullOrEmpty(method.Summary) ? "No description." : method.Summary.Trim();
+                            _chunksToIndex.Add(new DocumentItem
+                            {
+                                id = method.DocId,
+                                fqn = $"{fqn}.{method.Name}",
+                                type = "method",
+                                text = $"METHOD in {fqn}: {method.Name}. Summary: {methodSummary}"
+                            });
+                        }
+                    }
+
+                    // В. Додаємо властивості класу
+                    foreach (var prop in richType.Properties.Values)
+                    {
+                        if (prop.IsPublic)
+                        {
+                            string propSummary = string.IsNullOrEmpty(prop.Summary) ? "No description." : prop.Summary.Trim();
+                            _chunksToIndex.Add(new DocumentItem
+                            {
+                                id = prop.DocId,
+                                fqn = $"{fqn}.{prop.Name}",
+                                type = "property",
+                                text = $"PROPERTY in {fqn}: {prop.Name} ({prop.PropertyType}). Summary: {propSummary}"
+                            });
+                        }
+                    }
+                }
+                // ------------------------------
 
                 using (var writer = new StreamWriter(notePath))
                 {
@@ -369,7 +457,6 @@ namespace SboxAstGraph.Exporters
             ExportEnumsCatalog(registry);
             ExportAttributesCatalog(registry);
             ExportHomeIndex(analyzer.LargeFamilies, analyzer.DescendantCounts); // <- Передаємо лічильник   
-
 
             Console.WriteLine($"[OK] Dynamic Engine API documentation saved to: {_outPath}");
         }
@@ -560,6 +647,22 @@ namespace SboxAstGraph.Exporters
                 .Trim();
         }
 
+
+        /// <summary>
+        /// Фоновий асинхронний запуск індексації зібраних чанків на Python-сервісі.
+        /// </summary>
+        public async Task TriggerSemanticIndexingAsync(string projectId)
+        {
+            if (_chunksToIndex.Count == 0) return;
+
+            Console.WriteLine($"\n[C#] Підготовка до фонової індексації {_chunksToIndex.Count} чанків...");
+
+            // Запускаємо відправку в окремому асинхронному потоці, щоб не блокувати головний потік C#
+            await Task.Run(async () =>
+            {
+                await _librarianClient.IndexProjectAsync(projectId, _outPath, _chunksToIndex);
+            });
+        }
 
     }
 

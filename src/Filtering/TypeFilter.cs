@@ -9,6 +9,8 @@ namespace SboxAstGraph.Filtering; // Сучасний file-scoped namespace (C# 
 
 public class TypeFilter
 {
+    public static bool IncludeEngineLinks { get; set; } = false;
+
     // Набір типів, які ми ігноруємо примусово (стандартні примітиви C#)
     private static readonly HashSet<string> DefaultBlacklist = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -74,6 +76,26 @@ public class TypeFilter
         }
 
         return false;
+    }
+
+
+    /// <summary>
+    /// Розумно вирішує унікальне ім'я типу в API двигуна з урахуванням наявності чи відсутності простору назв.
+    /// </summary>
+    public string GetEngineFqn(ITypeSymbol? typeSymbol)
+    {
+        if (typeSymbol == null) return string.Empty;
+
+        string fqn = typeSymbol.ToDisplayString().Split('<')[0];
+        string shortName = typeSymbol.Name;
+
+        // Якщо в базі апішки цей тип зареєстрований суто за коротким ім'ям (наприклад, Vector3 замість Sandbox.Vector3)
+        if (_engineTypes.Contains(shortName) && !_engineTypes.Contains(fqn))
+        {
+            return shortName; // Повертаємо чистий "Vector3", "Rotation" тощо
+        }
+
+        return fqn;
     }
 
     /// <summary>

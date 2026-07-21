@@ -245,10 +245,23 @@ namespace SboxAstGraph.Analysis
             {
                 string targetName = targetType.Name;
 
-                // Запобіжник: створюємо зв'язок тільки якщо назва класу не порожня
                 if (!string.IsNullOrEmpty(targetName))
                 {
                     _graph.AddEdge(sourceClass, targetName, edgeType, details);
+                }
+            }
+            // --- ОПЦІОНАЛЬНИЙ ЗБІР ЗВ'ЯЗКІВ ДВИГУНА ---
+            else if (Filtering.TypeFilter.IncludeEngineLinks)
+            {
+                string ns = targetType.ContainingNamespace?.ToDisplayString() ?? "";
+                if (ns.StartsWith("Sandbox") || ns.StartsWith("Editor"))
+                {
+                    // Розумно вирішуємо ім'я лінку (Sandbox.PanelComponent або просто Vector3)
+                    string fqn = _filter.GetEngineFqn(targetType);
+                    if (!string.IsNullOrEmpty(fqn))
+                    {
+                        _graph.AddEdge(sourceClass, fqn, "Engine_" + edgeType, details);
+                    }
                 }
             }
         }

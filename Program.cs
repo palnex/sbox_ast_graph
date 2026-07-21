@@ -15,6 +15,8 @@ namespace SboxAstGraph
         {
             Console.WriteLine("=== SboxAstGraph: Статичний аналізатор коду ===");
 
+            SboxAstGraph.Filtering.TypeFilter.IncludeEngineLinks = args.Contains("--engine-links");
+
             string srcPath = ".";
             string outPath = "./output_test";
             string apiPath = "";
@@ -95,7 +97,57 @@ namespace SboxAstGraph
                             Console.ResetColor();
                             return;
                         }
-                        queryResult = queryEngine.Search(arg1);
+
+                        // Наш новий семантичний ШІ-пошук через локальний сервіс
+                        string activeOutPath = Path.Combine(outPath, "engine_api");
+                        if (!Directory.Exists(Path.Combine(activeOutPath, "vec")))
+                        {
+                            activeOutPath = Path.Combine(outPath, "user_code");
+                        }
+
+                        Console.ForegroundColor = ConsoleColor.Cyan;
+                        Console.WriteLine($"[C#] Запуск семантичного ШІ-пошуку для запиту: \"{arg1}\"...");
+                        Console.ResetColor();
+
+                        var client = new SboxAstGraph.Workspace.LibrarianClient();
+                        var response = await client.QuerySemanticAsync(activeOutPath, arg1);
+
+                        if (response != null && response.matches != null && response.matches.Count > 0)
+                        {
+                            Console.WriteLine($"\n=== ЗНАЙДЕНО НАЙБІЛЬШ СХОЖИХ СУТНОСТЕЙ (Топ-{response.matches.Count}) ===");
+                            for (int i = 0; i < response.matches.Count; i++)
+                            {
+                                var match = response.matches[i];
+                                ConsoleColor scoreColor = match.score > 0.85 ? ConsoleColor.Green : ConsoleColor.Yellow;
+
+                                Console.Write($"{i + 1}. ");
+                                Console.ForegroundColor = scoreColor;
+                                Console.Write($"[{match.score * 100:F1}%]");
+                                Console.ResetColor();
+
+                                Console.ForegroundColor = ConsoleColor.White;
+                                Console.Write($" {match.fqn} ");
+                                Console.ResetColor();
+
+                                Console.ForegroundColor = ConsoleColor.DarkGray;
+                                Console.WriteLine($"({match.type})");
+                                Console.ResetColor();
+
+                                string noteFileName = $"{match.id.Replace("C:", "").Replace("M:", "").Replace("P:", "").Split('(')[0]}.md";
+                                string localNotePath = Path.Combine(activeOutPath, noteFileName);
+
+                                Console.WriteLine($"   Summary: {match.preview}");
+                                Console.ForegroundColor = ConsoleColor.Blue;
+                                Console.WriteLine($"   File: {localNotePath}");
+                                Console.WriteLine();
+                                Console.ResetColor();
+                            }
+                            return; // Перериваємо, бо ми самі вивели результати красивим списком
+                        }
+                        else
+                        {
+                            queryResult = "[C#] Семантичних збігів не знайдено або AI-сервіс вимкнено.";
+                        }
                     }
                     else
                     {
@@ -159,8 +211,16 @@ namespace SboxAstGraph
                 var graph = analyzer.Analyze(compilation);
 
                 Console.WriteLine($"\n--- Експорт вашого коду у: {userOutPath} ---");
+                var swUser = System.Diagnostics.Stopwatch.StartNew();
                 var exporter = new GraphExporter(userOutPath);
                 exporter.Export(graph);
+                swUser.Stop();
+
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.WriteLine($"[C#] Експорт та запис Markdown-файлів завершено за: {swUser.ElapsedMilliseconds} мс!");
+                Console.ResetColor();
+
+                await exporter.TriggerSemanticIndexingAsync("SboxUserProject");
             }
 
             // --- СИСТЕМА 2: Документація та аналіз API двигуна ---
@@ -181,8 +241,16 @@ namespace SboxAstGraph
                     var apiGraph = engineAnalyzer.Analyze(schema);
 
                     Console.WriteLine($"\n--- Експорт API рушія у: {engineOutPath} ---");
+                    var swEngine = System.Diagnostics.Stopwatch.StartNew();
                     var exporter = new GraphExporter(engineOutPath);
-                    exporter.ExportEngineApi(apiGraph, engineAnalyzer); // <- Замінено на analyzer
+                    exporter.ExportEngineApi(apiGraph, engineAnalyzer);
+                    swEngine.Stop();
+
+                    Console.ForegroundColor = ConsoleColor.Green;
+                    Console.WriteLine($"[C#] Експорт та запис API-документації завершено за: {swEngine.ElapsedMilliseconds} мс!");
+                    Console.ResetColor();
+
+                    await exporter.TriggerSemanticIndexingAsync("SboxEngineAPI");
                 }
             }
 
