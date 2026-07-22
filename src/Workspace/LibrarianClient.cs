@@ -58,10 +58,74 @@ namespace SboxAstGraph.Workspace
         }
 
         /// <summary>
+        /// Автоматично перевіряє, чи запущений ШІ-демон. Якщо ні — приховано запускає його у фоні.
+        /// </summary>
+        private async Task EnsureServiceRunningAsync()
+        {
+            try
+            {
+                // Пробуємо зробити швидкий пінг
+                var response = await _client.GetAsync($"{BaseUrl}/");
+                if (response.IsSuccessStatusCode) return; // Сервіс уже активний, усе супер!
+            }
+            catch
+            {
+                // Якщо зловили помилку з'єднання — сервіс вимкнено. Запускаємо його!
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.WriteLine("\n[C# Bridge] Локальний ШІ-демон офлайн. Автоматичний фоновий запуск сервісу...");
+                Console.ResetColor();
+
+                try
+                {
+                    var startInfo = new System.Diagnostics.ProcessStartInfo
+                    {
+                        FileName = "python",
+                        Arguments = "librarian_ai/librarian_service.py",
+                        UseShellExecute = false,
+                        CreateNoWindow = true, // Повністю приховане вікно!
+                        RedirectStandardOutput = false,
+                        RedirectStandardError = false
+                    };
+
+                    System.Diagnostics.Process.Start(startInfo);
+
+                    // Очікуємо запуску та завантаження моделей (робимо пінг кожну секунду, ліміт 15 сек)
+                    Console.ForegroundColor = ConsoleColor.Cyan;
+                    Console.Write("[C# Bridge] Завантаження ШІ-моделі IBM Granite у пам'ять ");
+                    Console.ResetColor();
+
+                    for (int i = 0; i < 15; i++)
+                    {
+                        await Task.Delay(1000);
+                        Console.Write(".");
+                        try
+                        {
+                            var check = await _client.GetAsync($"{BaseUrl}/");
+                            if (check.IsSuccessStatusCode)
+                            {
+                                Console.WriteLine(" [ОК] ШІ-демон готовий до роботи!");
+                                return;
+                            }
+                        }
+                        catch { /* ігноруємо помилки підключення під час запуску */ }
+                    }
+                    Console.WriteLine("\n[Увага] Перевищено ліміт часу очікування моделі. Спробуйте запустити 'librarian_service.py' вручну.");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"\n[Помилка] Не вдалося автоматично запустити Python: {ex.Message}");
+                }
+            }
+        }
+
+        /// <summary>
         /// Відправляє зібрані документи на індексацію до локального Python-демона.
         /// </summary>
         public async Task<bool> IndexProjectAsync(string projectId, string outDirectory, List<DocumentItem> documents)
         {
+            // --- ВСТАВ ЦЕЙ РЯДОК НА ПОЧАТКУ ---
+            await EnsureServiceRunningAsync();
+
             string url = $"{BaseUrl}/index";
             var requestPayload = new IndexRequest
             {
@@ -120,6 +184,9 @@ namespace SboxAstGraph.Workspace
         /// </summary>
         public async Task<QueryResponse?> QuerySemanticAsync(string outDirectory, string query)
         {
+            // --- ВСТАВ ЦЕЙ РЯДОК НА ПОЧАТКУ ---
+            await EnsureServiceRunningAsync();
+
             string url = $"{BaseUrl}/query";
             var requestPayload = new QueryRequest
             {

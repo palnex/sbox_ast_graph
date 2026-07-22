@@ -7,6 +7,8 @@ from pydantic import BaseModel
 from typing import List, Dict, Any
 from sentence_transformers import SentenceTransformer
 from turbovec import IdMapIndex
+import time
+import threading
 
 app = FastAPI(title="SboxAstGraph Granite-TurboVec Service", version="1.1")
 
@@ -34,10 +36,28 @@ active_map: Dict[str, Dict[str, Any]] = {}
 # Поточний шлях до папки виводу
 current_out_dir = ""
 
+# Час останньої активності (ініціалізуємо поточним часом)
+last_activity_time = time.time()
+
+def idle_shutdown_checker():
+    """
+    Фоновий потік, який кожну хвилину перевіряє час бездіяльності
+    """
+    global last_activity_time
+    IDLE_LIMIT = 1800  # 30 хвилин у секундах (можеш змінити на 300 для 5 хвилин)
+    
+    while True:
+        time.sleep(30) # Перевірка кожні 30 секунд
+        if time.time() - last_activity_time > IDLE_LIMIT:
+            print("\n[AI] Роботу завершено (бездіяльність 15 хв). Автоматичне вимкнення сервісу. Бувай!")
+            os._exit(0)
+
 @app.on_event("startup")
 def startup_event():
     global embedder
     embedder = LocalEmbedder()
+    # --- ЗАПУСК ТАЙМЕРА АВТО-ВИМКНЕННЯ ---
+    threading.Thread(target=idle_shutdown_checker, daemon=True).start()
 
 # --- СХЕМИ ДАНИХ ---
 
@@ -64,6 +84,9 @@ def index_documents(payload: IndexRequest):
     Генерує вектори через IBM Granite, стискає їх через TurboQuant
     та записує .tvim і semantic_map.json у вибрану користувачем папку.
     """
+    global last_activity_time
+    last_activity_time = time.time()
+
     if not embedder:
         raise HTTPException(status_code=500, detail="Embedder model not initialized")
     
@@ -120,6 +143,12 @@ def index_documents(payload: IndexRequest):
     print(f"[Librarian] Index saved successfully: {index_path} ({len(texts)} items)")
     return {"status": "ok", "indexed_count": len(texts), "output_dir": out_dir}
 
+@app.get("/")
+def health_check():
+    """
+    Легкий пінг-ендпоінт для C# оркестратора
+    """
+    return {"status": "alive"}
 
 @app.post("/query")
 def query_semantic(payload: QueryRequest):
@@ -127,6 +156,9 @@ def query_semantic(payload: QueryRequest):
     Завантажує індекс з вказаної папки (якщо він ще не завантажений) 
     та робить надшвидкий семантичний пошук.
     """
+    global last_activity_time
+    last_activity_time = time.time()
+
     global active_index, active_map, current_out_dir
 
     if not embedder:
