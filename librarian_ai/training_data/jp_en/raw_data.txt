@@ -1,0 +1,57 @@
+query: апдейтни трансформ
+action: апдейтни
+patient: трансформ
+---
+query: якщо мережа впаде, реконнектни сокет через проксі
+condition: якщо мережа впаде
+action: реконнектни
+patient: сокет
+instrument: через проксі
+agent: system
+---
+query: заспавни ворога коли тригер спрацює
+condition: коли тригер спрацює
+action: заспавни
+patient: ворога
+---
+query: пулль зміни з гіта через консоль
+action: пулль
+patient: зміни з гіта
+instrument: через консоль
+---
+query: якщо білд впав, відправ сповіщення в слак через вебхук
+condition: якщо білд впав
+action: відправ
+patient: сповіщення в слак
+instrument: через вебхук
+agent: system
+---
+query: деплой сервіс за допомогою ансібла після успішного білду
+condition: після успішного білду
+action: деплой
+patient: сервіс
+instrument: за допомогою ансібла
+---
+query: мерджни цей реквест через консоль
+action: мерджни
+patient: цей реквест
+instrument: через консоль
+---
+query: якщо юзер натисне кнопку, запусти анімацію через інтерполятор
+condition: якщо юзер натисне кнопку
+action: запусти
+patient: анімацію
+instrument: через інтерполятор
+---
+query: парси цей json за допомогою Newtonsoft
+action: парси
+patient: цей json
+instrument: за допомогою Newtonsoft
+---
+query: коли прийде запит, очисти кеш за допомогою редісу
+condition: коли прийде запит
+action: очисти
+patient: кеш
+instrument: за допомогою редісу
+agent: system
+---

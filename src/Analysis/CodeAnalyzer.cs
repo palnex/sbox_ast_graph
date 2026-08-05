@@ -26,7 +26,7 @@ namespace SboxAstGraph.Analysis
 
             Console.WriteLine("Запуск двопрохідного аналізу файлів...");
 
-            // --- ПРОХІД 1: Сканування та реєстрація всіх локальних класів ---
+            // --- ПРОХІД 1: Сканування та реєстрація всіх локальних класів та структур ---
             var knownClasses = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var syntaxTree in compilation.SyntaxTrees)
             {
@@ -34,17 +34,29 @@ namespace SboxAstGraph.Analysis
                 if (semanticModel == null) continue;
 
                 var root = syntaxTree.GetRoot();
-                // Шукаємо оголошення класів та записуємо їх назви
+
+                // 1. Оголошення класів
                 var classDeclarations = root.DescendantNodes().OfType<Microsoft.CodeAnalysis.CSharp.Syntax.ClassDeclarationSyntax>();
                 foreach (var classDecl in classDeclarations)
                 {
                     string className = classDecl.Identifier.Text;
                     knownClasses.Add(className);
 
-                    // Відразу реєструємо вершину в графі
                     var classSymbol = semanticModel.GetDeclaredSymbol(classDecl);
                     string ns = classSymbol?.ContainingNamespace?.ToDisplayString() ?? "SboxGeneratedRazorSpace";
                     graph.AddNode(className, syntaxTree.FilePath, ns);
+                }
+
+                // 2. Оголошення структур (struct)
+                var structDeclarations = root.DescendantNodes().OfType<Microsoft.CodeAnalysis.CSharp.Syntax.StructDeclarationSyntax>();
+                foreach (var structDecl in structDeclarations)
+                {
+                    string structName = structDecl.Identifier.Text;
+                    knownClasses.Add(structName);
+
+                    var structSymbol = semanticModel.GetDeclaredSymbol(structDecl);
+                    string ns = structSymbol?.ContainingNamespace?.ToDisplayString() ?? "SboxGeneratedRazorSpace";
+                    graph.AddNode(structName, syntaxTree.FilePath, ns);
                 }
             }
 

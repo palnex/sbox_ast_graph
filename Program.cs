@@ -13,6 +13,18 @@ namespace SboxAstGraph
     {
         static async Task Main(string[] args)
         {
+            var mcpStdout = Console.Out; // Зберігаємо чистий stdout для MCP
+
+            // Якщо запущено у режимі MCP, відправляємо всі текстові логи в stderr, щоб не псувати JSON-потік
+            for (int i = 0; i < args.Length; i++)
+            {
+                if (args[i] == "--mode" && i + 1 < args.Length && args[i + 1].Equals("mcp", StringComparison.OrdinalIgnoreCase))
+                {
+                    Console.SetOut(Console.Error);
+                    break;
+                }
+            }
+
             Console.WriteLine("=== SboxAstGraph: Статичний аналізатор коду ===");
 
             SboxAstGraph.Filtering.TypeFilter.IncludeEngineLinks = args.Contains("--engine-links");
@@ -42,6 +54,59 @@ namespace SboxAstGraph
                 else if (args[i] == "--arg2" && i + 1 < args.Length) arg2 = args[++i];
                 else if (args[i] == "--cache" && i + 1 < args.Length) cachePath = args[++i];
                 else if (args[i] == "--undirected") isUndirected = true;
+            }
+
+            // --- РЕЖИМ MCP СЕРВЕРА ДЛЯ ШІ ---
+            if (mode == "mcp")
+            {
+                string userCache = cachePath;
+                if (string.IsNullOrEmpty(userCache))
+                {
+                    // Шукаємо graph.json у підпапці vec/
+                    userCache = Path.Combine(outPath, "user_code", "vec", "graph.json");
+                    if (!File.Exists(userCache))
+                    {
+                        userCache = Path.Combine(outPath, "vec", "graph.json");
+                    }
+                }
+
+                // Якщо кеш відсутній, автоматично запускаємо перший аналіз у фоні
+                if (!File.Exists(userCache))
+                {
+                    Console.Error.WriteLine("[MCP Setup] Кеш проєкту не знайдено. Автоматичний перший аналіз...");
+                    string userOutDir = Path.Combine(outPath, "user_code");
+                    Directory.CreateDirectory(userOutDir);
+
+                    var loader = new ProjectLoader();
+                    var sourceFiles = loader.FindSourceFiles(srcPath);
+                    var mcpSchema = await SchemaDownloader.GetLatestSchemaAsync(apiPath);
+                    var compilation = loader.CreateCompilation(sourceFiles, mcpSchema);
+
+                    var filter = new TypeFilter(mcpSchema);
+                    var analyzer = new CodeAnalyzer(filter);
+                    var userGraph = analyzer.Analyze(compilation);
+
+                    var exporter = new GraphExporter(userOutDir);
+                    exporter.Export(userGraph);
+
+                    userCache = Path.Combine(userOutDir, "vec", "graph.json");
+                }
+
+                try
+                {
+                    Console.Error.WriteLine($"[MCP Setup] Завантаження графу з: {userCache}");
+                    var queryEngine = new QueryEngine(userCache);
+                    var librarianClient = new LibrarianClient();
+                    var mcpServer = new McpServer(queryEngine, librarianClient, outPath, srcPath, mcpStdout);
+
+                    await mcpServer.ListenAsync();
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"[MCP Error] Критична помилка MCP сервера: {ex.Message}\n{ex.StackTrace}");
+                }
+
+                return;
             }
 
             // ЯКЩО ЗАПУЩЕНО РЕЖИМ ЗАПИТУ (Миттєве виконання без компіляції Roslyn)

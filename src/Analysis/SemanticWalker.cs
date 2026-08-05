@@ -13,9 +13,8 @@ namespace SboxAstGraph.Analysis
         private readonly TypeFilter _filter;
         private readonly CodeGraph _graph;
         private readonly string _filePath;
-        private readonly HashSet<string> _knownClasses; // ДОДАНО ПОЛЕ
+        private readonly HashSet<string> _knownClasses;
 
-        // Стек для відстеження поточного класу (враховує вкладені класи)
         private readonly Stack<string> _classContextStack = new();
 
         public SemanticWalker(SemanticModel semanticModel, TypeFilter filter, CodeGraph graph, string filePath, HashSet<string> knownClasses)
@@ -24,37 +23,31 @@ namespace SboxAstGraph.Analysis
             _filter = filter;
             _graph = graph;
             _filePath = filePath;
-            _knownClasses = knownClasses; // ДОДАНО ІНІЦІАЛІЗАЦІЮ
+            _knownClasses = knownClasses;
         }
 
         private string? CurrentClass => _classContextStack.Count > 0 ? _classContextStack.Peek() : null;
 
-        // 1. Оголошення класу та його наслідування (Вершина графу + зв'язок Inherits)
+        // 1. Оголошення класу та наслідування
         public override void VisitClassDeclaration(ClassDeclarationSyntax node)
         {
             var classSymbol = _semanticModel.GetDeclaredSymbol(node);
 
-            if (classSymbol != null && !_filter.IsBlacklisted(classSymbol))
+            if (classSymbol != null)
             {
                 string className = classSymbol.Name;
                 string ns = classSymbol.ContainingNamespace?.ToDisplayString() ?? "SboxGeneratedRazorSpace";
 
-                // Додаємо клас у граф як вершину
                 _graph.AddNode(className, _filePath, ns);
 
-                // ПЕРЕВІРКА НАСЛІДУВАННЯ: Чи наслідується клас від іншого нашого класу?
                 var baseType = classSymbol.BaseType;
                 if (baseType != null && !_filter.IsBlacklisted(baseType))
                 {
                     _graph.AddEdge(className, baseType.Name, "Inherits", "Base Class");
                 }
 
-                // Заходимо в контекст цього класу
                 _classContextStack.Push(className);
-
                 base.VisitClassDeclaration(node);
-
-                // Виходимо з контексту цього класу
                 _classContextStack.Pop();
             }
             else
@@ -63,7 +56,83 @@ namespace SboxAstGraph.Analysis
             }
         }
 
-        // 2. Поля класу (Зв'язок "References")
+        // 1.1 Оголошення структур (struct)
+        public override void VisitStructDeclaration(StructDeclarationSyntax node)
+        {
+            var structSymbol = _semanticModel.GetDeclaredSymbol(node);
+            if (structSymbol != null)
+            {
+                string structName = structSymbol.Name;
+                string ns = structSymbol.ContainingNamespace?.ToDisplayString() ?? "SboxGeneratedRazorSpace";
+
+                _graph.AddNode(structName, _filePath, ns);
+                _classContextStack.Push(structName);
+
+                base.VisitStructDeclaration(node);
+
+                _classContextStack.Pop();
+            }
+            else
+            {
+                base.VisitStructDeclaration(node);
+            }
+        }
+
+        // 2. Створення нових об'єктів (new Mesh(), new BBox(), new List() тощо)
+        public override void VisitObjectCreationExpression(ObjectCreationExpressionSyntax node)
+        {
+            if (CurrentClass != null)
+            {
+                ITypeSymbol? targetType = null;
+                var symbolInfo = _semanticModel.GetSymbolInfo(node);
+
+                if (symbolInfo.Symbol is IMethodSymbol ctorSymbol)
+                {
+                    targetType = ctorSymbol.ContainingType;
+                }
+                else
+                {
+                    // Fallback для структур (BBox) та типів без явного конструктора
+                    targetType = _semanticModel.GetTypeInfo(node).Type;
+                }
+
+                if (targetType != null)
+                {
+                    CheckAndAddDependency(CurrentClass, targetType, "Instantiates", $"new {targetType.Name}()");
+                }
+            }
+            base.VisitObjectCreationExpression(node);
+        }
+
+        // 2.1 Неявні конструктори new(...)
+        public override void VisitImplicitObjectCreationExpression(ImplicitObjectCreationExpressionSyntax node)
+        {
+            if (CurrentClass != null)
+            {
+                var targetType = _semanticModel.GetTypeInfo(node).Type;
+                if (targetType != null)
+                {
+                    CheckAndAddDependency(CurrentClass, targetType, "Instantiates", $"new {targetType.Name}()");
+                }
+            }
+            base.VisitImplicitObjectCreationExpression(node);
+        }
+
+        // Допоміжний метод для точного відображення назв типів (включаючи масиви Color32[] та дженерики List<T>)
+        private string GetTypeName(ITypeSymbol? type)
+        {
+            if (type == null) return "object";
+            if (type is IArrayTypeSymbol arrayType)
+                return GetTypeName(arrayType.ElementType) + "[]";
+            if (type is INamedTypeSymbol namedType && namedType.IsGenericType)
+            {
+                var args = string.Join(", ", namedType.TypeArguments.Select(GetTypeName));
+                return $"{namedType.Name}<{args}>";
+            }
+            return string.IsNullOrEmpty(type.Name) ? type.ToDisplayString() : type.Name;
+        }
+
+        // 3. Поля класу (ідеально чітке формулювання)
         public override void VisitFieldDeclaration(FieldDeclarationSyntax node)
         {
             if (CurrentClass == null) return;
@@ -73,13 +142,28 @@ namespace SboxAstGraph.Analysis
                 var fieldSymbol = _semanticModel.GetDeclaredSymbol(variable) as IFieldSymbol;
                 if (fieldSymbol != null)
                 {
-                    CheckAndAddDependency(CurrentClass, fieldSymbol.Type, "References", $"Field: {fieldSymbol.Name}");
+                    string typeDisplay = GetTypeName(fieldSymbol.Type);
+                    CheckAndAddDependency(CurrentClass, fieldSymbol.Type, "References", $"Field '{fieldSymbol.Name}' (holds '{typeDisplay}')");
                 }
             }
             base.VisitFieldDeclaration(node);
         }
 
-        // 3. Властивості класу (Зв'язок "References")
+        // Допоміжний метод: додає Engine-залежність поточному класу + головному класу файлу (наприклад GrassSpawner для GrassRenderObject)
+        private void AddEngineEdgeWithFilePrimaryFallback(string sourceClass, string targetEngineId, string edgeType, string details)
+        {
+            _graph.AddEdge(sourceClass, targetEngineId, edgeType, details);
+
+            // Якщо клас знаходиться всередині іншого файлу (наприклад GrassSpawner.cs містить GrassRenderObject),
+            // додаємо зв'язок також і для головного класу файлу!
+            string fileNameClass = System.IO.Path.GetFileNameWithoutExtension(_filePath);
+            if (!string.IsNullOrEmpty(fileNameClass) && !string.Equals(sourceClass, fileNameClass, StringComparison.OrdinalIgnoreCase) && _knownClasses.Contains(fileNameClass))
+            {
+                _graph.AddEdge(fileNameClass, targetEngineId, edgeType, details);
+            }
+        }
+
+        // 4. Властивості класу
         public override void VisitPropertyDeclaration(PropertyDeclarationSyntax node)
         {
             if (CurrentClass == null) return;
@@ -87,37 +171,62 @@ namespace SboxAstGraph.Analysis
             var propertySymbol = _semanticModel.GetDeclaredSymbol(node) as IPropertySymbol;
             if (propertySymbol != null)
             {
-                CheckAndAddDependency(CurrentClass, propertySymbol.Type, "References", $"Property: {propertySymbol.Name}");
+                string typeDisplay = GetTypeName(propertySymbol.Type);
+                CheckAndAddDependency(CurrentClass, propertySymbol.Type, "References", $"Has property '{propertySymbol.Name}' (type: {typeDisplay})");
             }
             base.VisitPropertyDeclaration(node);
         }
 
-        // 4. Виклики методів та прямий запуск подій/Action (наприклад, OnEvent())
+        // 5. Параметри методів та конструкторів
+        public override void VisitParameter(ParameterSyntax node)
+        {
+            if (CurrentClass != null)
+            {
+                var paramSymbol = _semanticModel.GetDeclaredSymbol(node);
+                if (paramSymbol != null)
+                {
+                    CheckAndAddDependency(CurrentClass, paramSymbol.Type, "References", $"Parameter '{paramSymbol.Name}'");
+                }
+            }
+            base.VisitParameter(node);
+        }
+
+        // 6. Виклики методів (підтримує Fluent API, статичні фабрики Material.Create, Texture.CreateRenderTarget, RenderTarget.From)
         public override void VisitInvocationExpression(InvocationExpressionSyntax node)
         {
             if (CurrentClass != null)
             {
                 var symbolInfo = _semanticModel.GetSymbolInfo(node);
-                if (symbolInfo.Symbol is IMethodSymbol methodSymbol)
+                var methodSymbol = symbolInfo.Symbol as IMethodSymbol
+                                  ?? (symbolInfo.CandidateSymbols.Length > 0 ? symbolInfo.CandidateSymbols[0] as IMethodSymbol : null);
+
+                if (methodSymbol != null)
                 {
-                    // Якщо це прямий запуск події/Action (Delegate Invoke)
-                    if (methodSymbol.MethodKind == MethodKind.DelegateInvoke)
+                    var targetType = methodSymbol.IsExtensionMethod && methodSymbol.ReducedFrom != null
+                        ? methodSymbol.ReducedFrom.ContainingType
+                        : methodSymbol.ContainingType;
+
+                    if (targetType != null)
                     {
-                        var eventSymbol = _semanticModel.GetSymbolInfo(node.Expression).Symbol;
-                        if (eventSymbol != null)
-                        {
-                            var targetType = eventSymbol.ContainingType;
-                            CheckAndAddDependency(CurrentClass, targetType, "Triggers", $"Action/Event: {eventSymbol.Name}");
-                        }
+                        string edgeType = IsSingleton(targetType) ? "CallsSingleton" : "Calls";
+                        CheckAndAddDependency(CurrentClass, targetType, edgeType, $"Method '{methodSymbol.Name}()'");
                     }
-                    else // Звичайний виклик методу
+                }
+                else if (node.Expression is MemberAccessExpressionSyntax memberAccess)
+                {
+                    string methodName = memberAccess.Name.Identifier.Text;
+                    var (callerType, isEngine) = ResolveCallerTypeOrName(memberAccess.Expression);
+
+                    if (!string.IsNullOrEmpty(callerType))
                     {
-                        var targetType = methodSymbol.ContainingType;
-                        if (targetType != null)
+                        if (isEngine)
                         {
-                            // Якщо клас є синглтоном, ставимо тип зв'язку CallsSingleton
-                            string edgeType = IsSingleton(targetType) ? "CallsSingleton" : "Calls";
-                            CheckAndAddDependency(CurrentClass, targetType, edgeType, $"Method: {methodSymbol.Name}()");
+                            string engineId = EngineAnalyzer.GetUniqueId("Sandbox." + callerType);
+                            AddEngineEdgeWithFilePrimaryFallback(CurrentClass, engineId, "Engine_Calls", $"Method '{methodName}()'");
+                        }
+                        else
+                        {
+                            _graph.AddEdge(CurrentClass, callerType, "Calls", $"Method '{methodName}()'");
                         }
                     }
                 }
@@ -125,112 +234,104 @@ namespace SboxAstGraph.Analysis
             base.VisitInvocationExpression(node);
         }
 
-        // 4.1 Виклик подій через умовний доступ (наприклад, Event?.Invoke())
-        public override void VisitConditionalAccessExpression(ConditionalAccessExpressionSyntax node)
-        {
-            if (CurrentClass != null)
-            {
-                // Перевіряємо, чи права частина — це запуск методу Invoke
-                if (node.WhenNotNull is InvocationExpressionSyntax ||
-                    (node.WhenNotNull is MemberBindingExpressionSyntax binding && binding.Name.Identifier.Text == "Invoke"))
-                {
-                    // Отримуємо символ самої події (ліва частина перед ?. )
-                    var leftSymbol = _semanticModel.GetSymbolInfo(node.Expression).Symbol;
-
-                    if (leftSymbol != null)
-                    {
-                        var targetType = leftSymbol.ContainingType;
-                        if (leftSymbol is IEventSymbol eventSymbol)
-                        {
-                            CheckAndAddDependency(CurrentClass, targetType, "Triggers", $"Event: {eventSymbol.Name}");
-                        }
-                        else if (leftSymbol is IFieldSymbol fieldSymbol && fieldSymbol.Type.Name.Contains("Action"))
-                        {
-                            CheckAndAddDependency(CurrentClass, targetType, "Triggers", $"Action: {fieldSymbol.Name}");
-                        }
-                    }
-                }
-            }
-            base.VisitConditionalAccessExpression(node);
-        }
-
-        // 5. Підписка на події (OnEvent += HandleEvent)
-        public override void VisitAssignmentExpression(AssignmentExpressionSyntax node)
-        {
-            // Нас цікавить лише оператор "+="
-            if (CurrentClass != null && node.Kind() == SyntaxKind.AddAssignmentExpression)
-            {
-                var leftSymbol = _semanticModel.GetSymbolInfo(node.Left).Symbol;
-
-                // Перевіряємо, чи це подія (Event) або C# делегат/Action
-                if (leftSymbol is IEventSymbol eventSymbol)
-                {
-                    var targetType = eventSymbol.ContainingType;
-                    CheckAndAddDependency(CurrentClass, targetType, "Subscribes", $"Event: {eventSymbol.Name}");
-                }
-                else if (leftSymbol is IFieldSymbol fieldSymbol && fieldSymbol.Type.Name.Contains("Action"))
-                {
-                    var targetType = fieldSymbol.ContainingType;
-                    CheckAndAddDependency(CurrentClass, targetType, "Subscribes", $"Action: {fieldSymbol.Name}");
-                }
-            }
-            base.VisitAssignmentExpression(node);
-        }
-
-        // 6. Звернення до полів та властивостей інших класів усередині методів (наприклад, manager._renderCount)
+        // 7. Звернення до властивостей та полів (Graphics.CameraPosition, Graphics.CameraRotation, Texture.Width тощо)
         public override void VisitMemberAccessExpression(MemberAccessExpressionSyntax node)
         {
             if (CurrentClass != null)
             {
+                // Пропускаємо виклики методів obj.Method(), вони опрацьовуються у VisitInvocationExpression
+                if (node.Parent is InvocationExpressionSyntax)
+                {
+                    base.VisitMemberAccessExpression(node);
+                    return;
+                }
+
                 var symbol = _semanticModel.GetSymbolInfo(node).Symbol;
 
                 if (symbol is IFieldSymbol fieldSymbol)
                 {
-                    var targetType = fieldSymbol.ContainingType;
-                    string edgeType = IsSingleton(targetType) ? "ReferencesSingleton" : "References";
-                    CheckAndAddDependency(CurrentClass, targetType, edgeType, $"Field: {fieldSymbol.Name}");
+                    CheckAndAddDependency(CurrentClass, fieldSymbol.ContainingType, "References", $"Field '{fieldSymbol.Name}'");
                 }
                 else if (symbol is IPropertySymbol propertySymbol)
                 {
-                    // Ігноруємо технічну властивість "Instance", щоб не створювати зв'язок класу на самого себе
                     if (propertySymbol.Name != "Instance")
                     {
-                        var targetType = propertySymbol.ContainingType;
-                        string edgeType = IsSingleton(targetType) ? "ReferencesSingleton" : "References";
-                        CheckAndAddDependency(CurrentClass, targetType, edgeType, $"Property: {propertySymbol.Name}");
+                        CheckAndAddDependency(CurrentClass, propertySymbol.ContainingType, "References", $"Property '{propertySymbol.Name}'");
+                    }
+                }
+                else if (node.Expression != null)
+                {
+                    string propName = node.Name.Identifier.Text;
+                    var (callerType, isEngine) = ResolveCallerTypeOrName(node.Expression);
+
+                    if (!string.IsNullOrEmpty(callerType) && isEngine)
+                    {
+                        string engineId = EngineAnalyzer.GetUniqueId("Sandbox." + callerType);
+                        AddEngineEdgeWithFilePrimaryFallback(CurrentClass, engineId, "Engine_References", $"Property '{propName}'");
                     }
                 }
             }
             base.VisitMemberAccessExpression(node);
         }
 
-        /// <summary>
-        /// Допоміжний метод для перевірки типу через фільтр та додавання зв'язку в граф.
-        /// </summary>
+
+        private static readonly HashSet<string> SystemPrimitives = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "String", "Int32", "Int64", "Single", "Double", "Boolean", "Object", "Char", "Byte",
+            "Void", "Action", "Func", "Task", "Guid", "Array", "Type", "Decimal", "IntPtr"
+        };
+
+
+        // Розумний резолвер, який розгортає Fluent API ланцюжки (Texture.CreateRenderTarget().WithSize()) 
+        // та знаходить справжній тип об'єкта (DensityMask -> Texture, CanvasAttributes -> RenderAttributes)
+        private (string? TypeName, bool IsEngine) ResolveCallerTypeOrName(ExpressionSyntax expr)
+        {
+            // 1. Перевіряємо семантичний тип (для змінних CanvasAttributes, DensityMask)
+            var type = _semanticModel.GetTypeInfo(expr).Type
+                      ?? (_semanticModel.GetSymbolInfo(expr).Symbol as IPropertySymbol)?.Type
+                      ?? (_semanticModel.GetSymbolInfo(expr).Symbol as IFieldSymbol)?.Type;
+
+            if (type != null && type.TypeKind != TypeKind.Error && !SystemPrimitives.Contains(type.Name) && type.TypeKind != TypeKind.TypeParameter)
+            {
+                bool isEngine = _filter.IsBlacklisted(type) || (type.ContainingNamespace?.ToDisplayString().StartsWith("Sandbox") == true);
+                return (type.Name, isEngine);
+            }
+
+            // 2. Якщо це Fluent-ланцюжок (Texture.CreateRenderTarget().WithSize()) -> йдемо вглиб до першого об'єкта
+            if (expr is InvocationExpressionSyntax innerInvocation && innerInvocation.Expression is MemberAccessExpressionSyntax innerMember)
+            {
+                return ResolveCallerTypeOrName(innerMember.Expression);
+            }
+
+            // 3. Якщо це просто ідентифікатор (Graphics, Material, Texture, Log тощо) -> шукаємо ДИНАМІЧНО в api.json
+            if (expr is IdentifierNameSyntax idSyntax)
+            {
+                string name = idSyntax.Identifier.Text;
+                if (_filter.IsEngineType(name)) return (name, true);
+                if (_knownClasses.Contains(name)) return (name, false);
+            }
+
+            return (null, false);
+        }
+
+
+
         private void CheckAndAddDependency(string sourceClass, ITypeSymbol? targetType, string edgeType, string details)
         {
             if (targetType == null) return;
 
-            // Якщо Roslyn не зміг розпізнати тип через помилки компіляції (Error Type)
-            if (targetType.TypeKind == TypeKind.Error)
-            {
-                string typeName = targetType.Name;
-                // Спробуємо знайти назву типу серед наших відомих кастомних класів (Fuzzy fallback)
-                if (_knownClasses.Contains(typeName))
-                {
-                    _graph.AddEdge(sourceClass, typeName, edgeType, details + " (Fuzzy)");
-                    return;
-                }
-            }
+            // 1. БЛОКУЄМО витік Generic-параметрів (T, U, TKey, GP_*) та системних примітивів (string, int, object)
+            if (targetType.TypeKind == TypeKind.TypeParameter) return;
+            if (SystemPrimitives.Contains(targetType.Name)) return;
 
-            // 1. Розпаковуємо масиви (наприклад, SwarmUnit[] -> беремо SwarmUnit)
+            // 2. Масиви -> розпаковуємо елемент
             if (targetType is IArrayTypeSymbol arrayType)
             {
                 CheckAndAddDependency(sourceClass, arrayType.ElementType, edgeType, details);
                 return;
             }
 
-            // 2. Відсікаємо дженерики (наприклад, List<Player> -> беремо саме Player)
+            // 3. Дженерики (Dictionary<string, BrushBatch> -> розпаковуємо аргументи, але примітиви відсіються на кроці 1)
             if (targetType is INamedTypeSymbol namedType && namedType.IsGenericType && namedType.TypeArguments.Length > 0)
             {
                 foreach (var arg in namedType.TypeArguments)
@@ -240,37 +341,54 @@ namespace SboxAstGraph.Analysis
                 return;
             }
 
-            // 3. Якщо цільовий тип не в чорному списку примітивів/рушія
+            // 4. Обробка Error / Unresolved типів (Graphics, Material, Mesh, Texture, Log, MathX)
+            if (targetType.TypeKind == TypeKind.Error)
+            {
+                string typeName = targetType.Name;
+                if (string.IsNullOrEmpty(typeName) || typeName == "var" || typeName == "T" || typeName.StartsWith("GP_") || SystemPrimitives.Contains(typeName)) return;
+
+                if (_knownClasses.Contains(typeName))
+                {
+                    _graph.AddEdge(sourceClass, typeName, edgeType, details + " (Fuzzy)");
+                }
+                else if (Filtering.TypeFilter.IncludeEngineLinks && _filter.IsEngineType(typeName))
+                {
+                    string engineId = EngineAnalyzer.GetUniqueId("Sandbox." + typeName);
+                    _graph.AddEdge(sourceClass, engineId, "Engine_" + edgeType, details);
+                }
+                return;
+            }
+
+            // 5. Користувацькі локальні класи
             if (!_filter.IsBlacklisted(targetType))
             {
                 string targetName = targetType.Name;
-
-                if (!string.IsNullOrEmpty(targetName))
+                if (!string.IsNullOrEmpty(targetName) && targetName != "T")
                 {
                     _graph.AddEdge(sourceClass, targetName, edgeType, details);
                 }
             }
-            // --- ОПЦІОНАЛЬНИЙ ЗБІР ЗВ'ЯЗКІВ ДВИГУНА ---
+            // 6. Офіційні класи Двигуна S&box / External (якщо це не системний примітив)
             else if (Filtering.TypeFilter.IncludeEngineLinks)
             {
                 string ns = targetType.ContainingNamespace?.ToDisplayString() ?? "";
-                if (ns.StartsWith("Sandbox") || ns.StartsWith("Editor"))
+                if (ns.StartsWith("System") && !ns.Contains("Collections")) return; // Пропускаємо System.* примітиви
+
+                string fqn = targetType.ToDisplayString().Split('<')[0];
+                string uniqueEngineId = EngineAnalyzer.GetUniqueId(fqn);
+
+                if (string.IsNullOrEmpty(uniqueEngineId) || uniqueEngineId == "void")
                 {
-                    // Розумно вирішуємо ім'я лінку (Sandbox.PanelComponent або просто Vector3)
-                    string fqn = _filter.GetEngineFqn(targetType);
-                    if (!string.IsNullOrEmpty(fqn))
-                    {
-                        _graph.AddEdge(sourceClass, fqn, "Engine_" + edgeType, details);
-                    }
+                    uniqueEngineId = EngineAnalyzer.GetUniqueId("Sandbox." + targetType.Name);
                 }
+
+                _graph.AddEdge(sourceClass, uniqueEngineId, "Engine_" + edgeType, details);
             }
         }
 
         private bool IsSingleton(ITypeSymbol? type)
         {
             if (type == null) return false;
-
-            // Перевіряємо, чи є в класі статичне поле або властивість з назвою "Instance"
             foreach (var member in type.GetMembers("Instance"))
             {
                 if (member.IsStatic) return true;

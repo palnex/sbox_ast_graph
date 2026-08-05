@@ -60,8 +60,6 @@ namespace SboxAstGraph.Workspace
 
                 if (arity > 0)
                 {
-                    // Очищаємо повне ім'я від тіків перед реєстрацією в словнику, 
-                    // щоб воно збігалося з посиланнями (наприклад, Editor.Widget`1 -> Editor.Widget)
                     string strippedFullName = type.FullName!;
                     int tickPos = strippedFullName.IndexOf('`');
                     if (tickPos != -1)
@@ -80,7 +78,6 @@ namespace SboxAstGraph.Workspace
             {
                 var (cleanNs, cleanClass) = ResolveFlattenedType(type.FullName!, allClassFullNames);
 
-                // Рахуємо арність типу для коректного розділення перевантажень
                 string rawName = type.Name ?? string.Empty;
                 int tickIndex = rawName.IndexOf('`');
                 int arity = 0;
@@ -97,7 +94,21 @@ namespace SboxAstGraph.Workspace
             }).ToList();
 
             // 3. Групуємо розгорнуті типи за чистими просторами імен
-            var typesByNamespace = flattenedTypes.GroupBy(x => string.IsNullOrEmpty(x.Namespace) ? "Sandbox" : x.Namespace);
+            var typesByNamespace = flattenedTypes.GroupBy(x => string.IsNullOrEmpty(x.Namespace) ? "Sandbox" : x.Namespace).ToList();
+
+            Action<StringBuilder> appendExternalStubs = (sb) =>
+            {
+                sb.AppendLine();
+                sb.AppendLine("// --- ВІРТУАЛЬНІ МУЛЯЖІ ЗОВНІШНІХ БІБЛІОТЕК ДЛЯ СТАБІЛЬНОЇ КОМПІЛЯЦІЇ ---");
+                sb.AppendLine("namespace Microsoft.AspNetCore.Components.Rendering { public class RenderTreeBuilder {} }");
+                sb.AppendLine("namespace Microsoft.AspNetCore.Components { public class EventCallback {} public class RenderFragment {} public class RenderFragment<T> {} }");
+                sb.AppendLine("namespace System.Net.Http { public class DelegatingHandler {} public class HttpContent {} public class HttpResponseMessage {} }");
+                sb.AppendLine("namespace Microsoft.CodeAnalysis { public class SyntaxTree {} public class Diagnostic {} public class PortableExecutableReference {} public enum DiagnosticSeverity { Error } }");
+                sb.AppendLine("namespace Microsoft.CodeAnalysis.Emit { public class EmitResult {} }");
+                sb.AppendLine("namespace Microsoft.CodeAnalysis.CSharp { public class CSharpParseOptions {} }");
+                sb.AppendLine("namespace System.Collections.Specialized { public enum NotifyCollectionChangedAction { Add } }");
+                sb.AppendLine();
+            };
 
             foreach (var nsGroup in typesByNamespace)
             {
@@ -105,7 +116,6 @@ namespace SboxAstGraph.Workspace
                 codeBuilder.AppendLine($"namespace {ns}");
                 codeBuilder.AppendLine("{");
 
-                // Дедублікуємо класи за ім'ям ТА арністю (це дозволяє співіснувати generic та non-generic версіям типу!)
                 var uniqueClassesInNamespace = nsGroup
                     .GroupBy(x => new { x.ClassName, x.Arity })
                     .Select(g => g.First());
@@ -119,17 +129,7 @@ namespace SboxAstGraph.Workspace
                 codeBuilder.AppendLine();
             }
 
-            // Додаємо віртуальні муляжі зовнішніх веб-бібліотек перед компіляцією
-            codeBuilder.AppendLine();
-            codeBuilder.AppendLine("// --- ВІРТУАЛЬНІ МУЛЯЖІ ЗОВНІШНІХ БІБЛІОТЕК ДЛЯ СТАБІЛЬНОЇ КОМПІЛЯЦІЇ ---");
-            codeBuilder.AppendLine("namespace Microsoft.AspNetCore.Components.Rendering { public class RenderTreeBuilder {} }");
-            codeBuilder.AppendLine("namespace Microsoft.AspNetCore.Components { public class EventCallback {} public class RenderFragment {} public class RenderFragment<T> {} }");
-            codeBuilder.AppendLine("namespace System.Net.Http { public class DelegatingHandler {} public class HttpContent {} public class HttpResponseMessage {} }");
-            codeBuilder.AppendLine("namespace Microsoft.CodeAnalysis { public class SyntaxTree {} public class Diagnostic {} public class PortableExecutableReference {} public enum DiagnosticSeverity { Error } }");
-            codeBuilder.AppendLine("namespace Microsoft.CodeAnalysis.Emit { public class EmitResult {} }");
-            codeBuilder.AppendLine("namespace Microsoft.CodeAnalysis.CSharp { public class CSharpParseOptions {} }");
-            codeBuilder.AppendLine("namespace System.Collections.Specialized { public enum NotifyCollectionChangedAction { Add } }");
-            codeBuilder.AppendLine();
+            appendExternalStubs(codeBuilder);
 
             string generatedCode = codeBuilder.ToString();
 
@@ -141,7 +141,7 @@ namespace SboxAstGraph.Workspace
             {
                 MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
                 MetadataReference.CreateFromFile(Path.Combine(systemFolder, "System.Runtime.dll")),
-                MetadataReference.CreateFromFile(Path.Combine(systemFolder, "System.Private.Uri.dll")), // Потрібно для System.Uri
+                MetadataReference.CreateFromFile(Path.Combine(systemFolder, "System.Private.Uri.dll")),
                 MetadataReference.CreateFromFile(Path.Combine(systemFolder, "System.Collections.dll")),
                 MetadataReference.CreateFromFile(Path.Combine(systemFolder, "System.Collections.Concurrent.dll")),
                 MetadataReference.CreateFromFile(Path.Combine(systemFolder, "System.Collections.Immutable.dll")),
@@ -169,16 +169,43 @@ namespace SboxAstGraph.Workspace
                 {
                     var errors = result.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error).ToList();
 
-                    // Якщо помилки викликані відсутністю типів (CS0246/CS0234), запускаємо другий прохід
-                    // Якщо помилки викликані відсутністю типів (CS0246/CS0234), запускаємо другий прохід
-                    if (errors.Any(e => e.Id == "CS0246" || e.Id == "CS0234"))
+                    if (errors.Any(e => e.Id == "CS0246" || e.Id == "CS0234" || e.Id == "CS0453"))
                     {
-                        Console.WriteLine("[Аналіз] Виявлено відсутні типи. Запуск генерації динамічних авто-заглушок...");
+                        Console.WriteLine("[Аналіз] Запуск авто-загоювального компілятора (Self-Healing SDK)...");
+
+                        var regexStruct = new System.Text.RegularExpressions.Regex(@"The type '([^']+)' must be a non-nullable value type");
+                        foreach (var err in errors.Where(e => e.Id == "CS0453"))
+                        {
+                            var match = regexStruct.Match(err.GetMessage());
+                            if (match.Success)
+                            {
+                                string structName = match.Groups[1].Value.Trim();
+                                int lastDot = structName.LastIndexOf('.');
+                                if (lastDot != -1) structName = structName.Substring(lastDot + 1);
+                                ForcedStructs.Add(structName);
+                            }
+                        }
+
+                        var healingCodeBuilder = new StringBuilder();
+                        healingCodeBuilder.AppendLine("#nullable disable");
+                        healingCodeBuilder.AppendLine("using System; using System.Collections; using System.Collections.Generic; using System.Threading.Tasks;");
+
+                        foreach (var nsGroup in typesByNamespace)
+                        {
+                            healingCodeBuilder.AppendLine($"namespace {nsGroup.Key} {{");
+                            var uniqueClassesInNamespace = nsGroup.GroupBy(x => new { x.ClassName, x.Arity }).Select(g => g.First());
+                            foreach (var item in uniqueClassesInNamespace)
+                            {
+                                GenerateTypeStub(healingCodeBuilder, item.Type, item.ClassName, allClassFullNames);
+                            }
+                            healingCodeBuilder.AppendLine("}");
+                        }
+
+                        appendExternalStubs(healingCodeBuilder); // Додаємо віртуальні муляжі у 2-й прохід!
 
                         string dynamicStubs = GenerateMissingStubsOnTheFly(errors, allClassFullNames);
-                        generatedCode += dynamicStubs;
+                        generatedCode = healingCodeBuilder.ToString() + dynamicStubs;
 
-                        // Створюємо нову збірку вже з ін'єктованими авто-заглушками
                         var healingSyntaxTree = CSharpSyntaxTree.ParseText(generatedCode);
                         var healingCompilation = CSharpCompilation.Create(
                             assemblyName,
@@ -187,12 +214,11 @@ namespace SboxAstGraph.Workspace
                             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, optimizationLevel: OptimizationLevel.Release)
                         );
 
-                        ms.SetLength(0); // Скидаємо потік перед повторним випуском
+                        ms.SetLength(0);
                         result = healingCompilation.Emit(ms);
                     }
                 }
 
-                // Якщо навіть після другого проходу є критичні помилки, показуємо їх агрегований аналіз
                 if (!result.Success)
                 {
                     Console.ForegroundColor = ConsoleColor.Yellow;
@@ -870,14 +896,15 @@ namespace SboxAstGraph.Workspace
             return result.OrderBy(x => x).ToList();
         }
 
-        private static readonly HashSet<string> ForcedStructs = new(StringComparer.OrdinalIgnoreCase)
+        public static readonly HashSet<string> ForcedStructs = new(StringComparer.OrdinalIgnoreCase)
         {
             "Color", "Color32", "Vector2", "Vector3", "Vector4", "Angles", "Rotation", "SceneTraceResult",
             "Ray", "BBox", "Plane", "Matrix", "CreateSubGraphResult", "Transform", "Length", "PanelTransform",
             "SceneReferenceNode", "PhysicsBodyBuilder_HullSimplify", "Component_IPressable_Tooltip",
             "Json_ObjectIdentifier", "EmbeddedResource", "CloneConfig", "NavMeshAgent_LinkTraversalData",
             "Terrain_TerrainMaterialInfo", "Connection_Filter", "MovieTimeRange", "MovieTime",
-            "MountResourceInfo", "GradientFogSetup", "SteamId"
+            "MountResourceInfo", "GradientFogSetup", "SteamId",
+            "SoundFile_PcmOptions", "SoundFile_LoadOptions", "PcmOptions", "LoadOptions"
         };
 
         /// <summary>

@@ -1,0 +1,88 @@
+# Project Structure
+
+- `.astignore` `(11L, 324B)`
+- `.gitattributes` `(2L, 66B)`
+- `.gitignore` `(36L, 890B)`
+- `Program.cs` `(330L, 17.1KB)`
+- `README.md` `(221L, 15.1KB)`
+- `SboxAstGraph.csproj` `(39L, 1.3KB)`
+- `api-old.json` `(1L, 9.3MB)`
+- `test_query.py` `(25L, 877B)`
+  - **checkpoints/**
+    - `needle.pkl` `(BIN, 50.2MB)`
+    - **.cache/**
+      - **huggingface/**
+        - `.gitignore` `(1L, 1B)`
+        - `CACHEDIR.TAG` `(4L, 195B)`
+        - **download/**
+          - `needle.pkl.lock` `(0L, 0B)`
+          - `needle.pkl.metadata` `(3L, 125B)`
+  - **help/**
+    - `librarian_ai.bat` `(11L, 439B)`
+    - `print_guide.py` `(44L, 2.7KB)`
+    - `wsl_init.sh` `(14L, 511B)`
+  - **librarian_ai/**
+    - `FINE_TUNE_GUIDE.md` `(63L, 3.4KB)`
+    - `NEEDLE_SPEC.md` `(46L, 4.5KB)`
+    - `export_to_onnx.py` `(157L, 7.1KB)`
+    - `librarian_service.py` `(213L, 8.9KB)`
+    - `needle_benchmark.py` `(212L, 8.2KB)`
+    - `parser.py` `(155L, 7.6KB)`
+    - `run_comparison_test.py` `(163L, 7.3KB)`
+    - `run_comparison_test_onnx.py` `(163L, 6.7KB)`
+    - `run_demo.py` `(30L, 1.0KB)`
+    - `test_ft_model.py` `(58L, 2.8KB)`
+    - `test_needle_onnx.py` `(158L, 5.7KB)`
+    - `train.py` `(153L, 7.6KB)`
+    - **models/**
+      - **fine_tunes/**
+        - **ua_en/**
+          - `decoder_step_ft.onnx` `(BIN, 80.7MB)`
+          - `encoder_ft.onnx` `(BIN, 52.6MB)`
+          - `needle_ft.pkl` `(BIN, 50.2MB)`
+      - **needle/**
+        - `decoder_step.onnx` `(BIN, 80.7MB)`
+        - `encoder.onnx` `(BIN, 52.6MB)`
+        - `needle.pkl` `(BIN, 50.2MB)`
+        - `tokenizer.model` `(BIN, 122.0KB)`
+    - **needle_torch/**
+      - `__init__.py` `(10L, 295B)`
+      - `config.py` `(42L, 1.2KB)`
+      - `layers.py` `(227L, 8.9KB)`
+      - `model.py` `(371L, 13.2KB)`
+    - **training_data/**
+      - `PROMPT_GENERATION_GUIDE.md` `(85L, 7.9KB)`
+      - `README.md` `(51L, 3.4KB)`
+      - `compile_dataset.py` `(121L, 4.4KB)`
+      - **jp_en/**
+        - `raw_data.txt` `(57L, 2.1KB)`
+        - `train_data.jsonl` `(13L, 8.3KB)`
+      - **ua_en/**
+        - `raw_data----OLD-failed.txt` `(12397L, 461.7KB)`
+        - `raw_data----old--failed.txt` `(3539L, 133.1KB)`
+        - `raw_data.txt` `(2138L, 99.5KB)`
+        - `train_data.jsonl` `(150L, 99.4KB)`
+  - **src/**
+    - **Analysis/**
+      - `CodeAnalyzer.cs` `(121L, 6.0KB)`
+      - `EngineAnalyzer.cs` `(217L, 9.8KB)`
+      - `EngineApiParser.cs` `(140L, 6.8KB)`
+      - `QueryEngine.cs` `(467L, 19.2KB)`
+      - `SemanticWalker.cs` `(279L, 11.4KB)`
+      - `TypeResolver.cs` `(137L, 5.4KB)`
+    - **Exporters/**
+      - `GraphExporter.cs` `(669L, 30.3KB)`
+    - **Filtering/**
+      - `TypeFilter.cs` `(136L, 5.8KB)`
+    - **Mcp/**
+      - `McpServer.cs` `(243L, 10.0KB)`
+    - **Model/**
+      - `CodeGraph.cs` `(71L, 2.8KB)`
+      - `EngineApiModel.cs` `(62L, 2.4KB)`
+      - `TypeSignature.cs` `(18L, 1.1KB)`
+    - **Workspace/**
+      - `LibrarianClient.cs` `(232L, 10.8KB)`
+      - `ProjectLoader.cs` `(207L, 8.5KB)`
+      - `RazorPreProcessor.cs` `(90L, 3.7KB)`
+      - `SchemaDownloader.cs` `(63L, 2.6KB)`
+      - `StubGenerator.cs` `(995L, 50.6KB)`

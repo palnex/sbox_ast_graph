@@ -171,9 +171,9 @@ namespace SboxAstGraph.Analysis
         }
 
         /// <summary>
-        /// Дає стислий текстовий опис класу та його безпосередніх зв'язків
+        /// Дає стислий текстовий опис класу та його безпосередніх зв'язків з можливістю фільтрації
         /// </summary>
-        public string Explain(string className)
+        public string Explain(string className, string viewMode = "all")
         {
             var node = _graph.nodes.FirstOrDefault(n => string.Equals(n.id, className, StringComparison.OrdinalIgnoreCase));
             if (node == null)
@@ -190,33 +190,62 @@ namespace SboxAstGraph.Analysis
             sb.AppendLine($"Файл: {node.file}");
             sb.AppendLine("------------------------------------");
 
-            sb.AppendLine($"Вихідні зв'язки (Dependencies: {outgoing.Count}):");
-            if (outgoing.Count > 0)
+            viewMode = viewMode.ToLower().Trim();
+
+            // 1. Вхідні зв'язки (In)
+            if (viewMode == "all" || viewMode == "in")
             {
-                foreach (var edge in outgoing.Take(15))
+                sb.AppendLine($"Вхідні зв'язки (Dependents: {incoming.Count}):");
+                if (incoming.Count > 0)
                 {
-                    sb.AppendLine($"  -> [{edge.type}] {edge.target} ({edge.details})");
+                    foreach (var edge in incoming)
+                    {
+                        sb.AppendLine($"  <- [{edge.type}] {edge.source} ({edge.details})");
+                    }
                 }
-                if (outgoing.Count > 15) sb.AppendLine($"  ... та ще {outgoing.Count - 15} зв'язків.");
-            }
-            else
-            {
-                sb.AppendLine("  (Немає вихідних зв'язків)");
+                else
+                {
+                    sb.AppendLine("  (Ніхто не посилається на цей клас)");
+                }
+                sb.AppendLine();
             }
 
-            sb.AppendLine();
-            sb.AppendLine($"Вхідні зв'язки (Dependents: {incoming.Count}):");
-            if (incoming.Count > 0)
+            // 2. Вихідні зв'язки (Out)
+            if (viewMode == "all" || viewMode == "out")
             {
-                foreach (var edge in incoming.Take(15))
+                sb.AppendLine($"Вихідні зв'язки (Dependencies: {outgoing.Count}):");
+                var userOutgoing = outgoing.Where(e => !e.type.StartsWith("Engine_")).ToList();
+                if (userOutgoing.Count > 0)
                 {
-                    sb.AppendLine($"  <- [{edge.type}] {edge.source} ({edge.details})");
+                    foreach (var edge in userOutgoing)
+                    {
+                        sb.AppendLine($"  -> [{edge.type}] {edge.target} ({edge.details})");
+                    }
                 }
-                if (incoming.Count > 15) sb.AppendLine($"  ... та ще {incoming.Count - 15} зв'язків.");
+                else
+                {
+                    sb.AppendLine("  (Немає вихідних зв'язків до коду користувача)");
+                }
+                sb.AppendLine();
             }
-            else
+
+            // 3. Залежності від двигуна S&box
+            if (viewMode == "all" || viewMode == "engine_deps")
             {
-                sb.AppendLine("  (Ніхто не посилається на цей клас)");
+                var engineDeps = outgoing.Where(e => e.type.StartsWith("Engine_")).ToList();
+                sb.AppendLine($"Залежності від двигуна S&box (Engine Deps: {engineDeps.Count}):");
+                if (engineDeps.Count > 0)
+                {
+                    foreach (var edge in engineDeps)
+                    {
+                        string cleanType = edge.type.Replace("Engine_", "");
+                        sb.AppendLine($"  -> [{cleanType}] Engine::{edge.target} ({edge.details})");
+                    }
+                }
+                else
+                {
+                    sb.AppendLine("  (Прямих залежностей від Engine API не виявлено)");
+                }
             }
 
             return sb.ToString();

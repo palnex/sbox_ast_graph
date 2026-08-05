@@ -9,7 +9,7 @@ namespace SboxAstGraph.Filtering; // Сучасний file-scoped namespace (C# 
 
 public class TypeFilter
 {
-    public static bool IncludeEngineLinks { get; set; } = false;
+    public static bool IncludeEngineLinks { get; set; } = true;
 
     // Набір типів, які ми ігноруємо примусово (стандартні примітиви C#)
     private static readonly HashSet<string> DefaultBlacklist = new(StringComparer.OrdinalIgnoreCase)
@@ -34,42 +34,59 @@ public class TypeFilter
     }
 
     /// <summary>
-    /// Перевіряє, чи є тип системним примітивом або частиною двигуна S&box.
+    /// Динамічно перевіряє, чи є назва типу офіційним типом двигуна з api.json (БЕЗ ХАРДКОДУ)
+    /// </summary>
+    public bool IsEngineType(string? name)
+    {
+        if (string.IsNullOrEmpty(name)) return false;
+        return _engineTypes.Contains(name);
+    }
+
+    /// <summary>
+    /// Перевіряє, чи є тип системним примітивом (ігноруємо C# примітиви, але залишаємо S&box/Custom структури).
     /// </summary>
     public bool IsBlacklisted(ITypeSymbol? typeSymbol)
     {
         if (typeSymbol == null) return true;
 
-        // 1. Динамічно відсікаємо будь-які типи-значення (Structs, Enums, Primitives)
-        // Це миттєво прибирає зв'язки до Vector3, Color, Rotation, int, float тощо
-        if (typeSymbol.IsValueType)
-        {
-            return true;
-        }
-
-        // 2. Отримуємо чисту назву типу
         string typeName = typeSymbol.Name;
 
-        // 3. Якщо тип є масивом або дженериком, дістаємо його внутрішній тип
+        // 1. Якщо це масив, беремо внутрішній елемент
         if (typeSymbol is IArrayTypeSymbol arrayType)
         {
-            typeName = arrayType.ElementType.Name;
+            return IsBlacklisted(arrayType.ElementType);
         }
 
-        // 4. Перевірка за вбудованим чорним списком примітивів C# (для додаткової безпеки)
+        // 2. Ігноруємо базові системні примітиви C# (int, float, bool тощо)
         if (DefaultBlacklist.Contains(typeName))
         {
             return true;
         }
 
-        // 5. Перевірка за простором імен (ігноруємо все з System та Microsoft)
+        // 3. Ігноруємо все з системних просторів назв Microsoft/System
         string ns = typeSymbol.ContainingNamespace?.ToDisplayString() ?? "";
         if (ns.StartsWith("System") || ns.StartsWith("Microsoft"))
         {
             return true;
         }
 
-        // 6. Перевірка за офіційною схемою S&box
+        // 4. Якщо це структура (ValueType), перевіряємо, чи це не S&box або локальний тип
+        if (typeSymbol.IsValueType)
+        {
+            // Якщо це тип двигуна S&box або наш кастомний простір назв - НЕ блокуємо!
+            if (IncludeEngineLinks && (ns.StartsWith("Sandbox") || ns.StartsWith("Editor")))
+            {
+                return false;
+            }
+            // Якщо це наш власний клас/структура (не системний primitive) - НЕ блокуємо!
+            if (string.IsNullOrEmpty(ns) || !ns.StartsWith("System"))
+            {
+                return false;
+            }
+            return true; // Всі інші системні структури блокуємо
+        }
+
+        // 5. Перевірка за офіційною схемою S&box
         if (_engineTypes.Contains(typeName) || _engineTypes.Contains($"{ns}.{typeName}") || ns.StartsWith("Sandbox"))
         {
             return true;
@@ -109,9 +126,20 @@ public class TypeFilter
             {
                 if (type != null)
                 {
-                    // Зберігаємо коротку та повну назву типу для максимальної точності фільтрації
                     if (!string.IsNullOrEmpty(type.Name)) _engineTypes.Add(type.Name);
                     if (!string.IsNullOrEmpty(type.FullName)) _engineTypes.Add(type.FullName);
+
+                    // ДИНАМІЧНО: Реєструємо глобальні властивості-хелпери (Log, Input тощо) з Global* просторів
+                    if (type.Properties != null && (type.Name?.Contains("Global") == true || type.FullName?.Contains("Global") == true))
+                    {
+                        foreach (var prop in type.Properties)
+                        {
+                            if (prop != null && !string.IsNullOrEmpty(prop.Name))
+                            {
+                                _engineTypes.Add(prop.Name); // Додає "Log", "Input" тощо як відомі двигуну символи!
+                            }
+                        }
+                    }
                 }
             }
 

@@ -77,9 +77,18 @@ namespace SboxAstGraph.Workspace
 
                 try
                 {
+                    // Шукаємо шлях до Python всередині venv (віртуального середовища)
+                    string pythonExe = "python";
+                    if (File.Exists(".venv/Scripts/python.exe")) pythonExe = Path.GetFullPath(".venv/Scripts/python.exe");
+                    else if (File.Exists("venv/Scripts/python.exe")) pythonExe = Path.GetFullPath("venv/Scripts/python.exe");
+                    else if (File.Exists("librarian_ai/venv/Scripts/python.exe")) pythonExe = Path.GetFullPath("librarian_ai/venv/Scripts/python.exe");
+                    else if (File.Exists("librarian_ai/.venv/Scripts/python.exe")) pythonExe = Path.GetFullPath("librarian_ai/.venv/Scripts/python.exe");
+
+                    Console.WriteLine($"[C# Bridge] Використовується Python: {pythonExe}");
+
                     var startInfo = new System.Diagnostics.ProcessStartInfo
                     {
-                        FileName = "python",
+                        FileName = pythonExe,
                         Arguments = "librarian_ai/librarian_service.py",
                         UseShellExecute = false,
                         CreateNoWindow = true, // Повністю приховане вікно!
@@ -94,7 +103,7 @@ namespace SboxAstGraph.Workspace
                     Console.Write("[C# Bridge] Завантаження ШІ-моделі IBM Granite у пам'ять ");
                     Console.ResetColor();
 
-                    for (int i = 0; i < 15; i++)
+                    for (int i = 0; i < 60; i++) // Збільшено до 60 секунд (1 хв)
                     {
                         await Task.Delay(1000);
                         Console.Write(".");
