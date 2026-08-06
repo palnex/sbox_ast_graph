@@ -41,9 +41,9 @@ namespace SboxAstGraph.Analysis
                 _graph.AddNode(className, _filePath, ns);
 
                 var baseType = classSymbol.BaseType;
-                if (baseType != null && !_filter.IsBlacklisted(baseType))
+                if (baseType != null && baseType.SpecialType == SpecialType.None && baseType.ToDisplayString() != "object")
                 {
-                    _graph.AddEdge(className, baseType.Name, "Inherits", "Base Class");
+                    CheckAndAddDependency(className, baseType, "Inherits", "Base Class");
                 }
 
                 _classContextStack.Push(className);
@@ -221,7 +221,8 @@ namespace SboxAstGraph.Analysis
                     {
                         if (isEngine)
                         {
-                            string engineId = EngineAnalyzer.GetUniqueId("Sandbox." + callerType);
+                            string fullEngineName = callerType.StartsWith("Sandbox") ? callerType : "Sandbox." + callerType;
+                            string engineId = EngineAnalyzer.GetUniqueId(fullEngineName);
                             AddEngineEdgeWithFilePrimaryFallback(CurrentClass, engineId, "Engine_Calls", $"Method '{methodName}()'");
                         }
                         else
@@ -278,7 +279,8 @@ namespace SboxAstGraph.Analysis
         private static readonly HashSet<string> SystemPrimitives = new(StringComparer.OrdinalIgnoreCase)
         {
             "String", "Int32", "Int64", "Single", "Double", "Boolean", "Object", "Char", "Byte",
-            "Void", "Action", "Func", "Task", "Guid", "Array", "Type", "Decimal", "IntPtr"
+            "Void", "Action", "Func", "Task", "Guid", "Array", "Type", "Decimal", "IntPtr",
+            "ValueCollection", "KeyCollection", "Enumerator"
         };
 
 
@@ -303,11 +305,15 @@ namespace SboxAstGraph.Analysis
                 return ResolveCallerTypeOrName(innerMember.Expression);
             }
 
-            // 3. Якщо це просто ідентифікатор (Graphics, Material, Texture, Log тощо) -> шукаємо ДИНАМІЧНО в api.json
+            // 3. Якщо це просто ідентифікатор (Log, Input тощо) -> динамічно дізнаємося його справжній тип з api.json
             if (expr is IdentifierNameSyntax idSyntax)
             {
                 string name = idSyntax.Identifier.Text;
-                if (_filter.IsEngineType(name)) return (name, true);
+                if (_filter.IsEngineType(name))
+                {
+                    string realType = _filter.ResolveEngineAlias(name);
+                    return (realType, true);
+                }
                 if (_knownClasses.Contains(name)) return (name, false);
             }
 

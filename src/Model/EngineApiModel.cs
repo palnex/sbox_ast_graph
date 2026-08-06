@@ -13,6 +13,8 @@ namespace SboxAstGraph.Model
         public bool IsEnum { get; set; }
         public bool IsValueType { get; set; }
         public bool IsAttribute { get; set; }
+        public bool IsNested { get; set; }          // <--- НОВЕ ПОЛЕ: Чи є тип вкладеним
+        public string? ParentType { get; set; }     // <--- НОВЕ ПОЛЕ: Повне ім'я батьківського класу
         public string? Summary { get; set; }
 
         // Використовуємо DocId як ключ для 100% унікальності та запобігання затиранню

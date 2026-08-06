@@ -25,14 +25,23 @@ namespace SboxAstGraph.Analysis
         public static string GetUniqueId(string fullName)
         {
             if (string.IsNullOrEmpty(fullName)) return "void";
-            return fullName
-                .Replace("+", "_")
+
+            // Конвертуємо плюси (+) та підкреслення (_) між вкладеними класами на крапки (.)
+            string clean = fullName
+                .Replace("+", ".")
                 .Replace("`1", "")
                 .Replace("`2", "")
                 .Replace("`3", "")
                 .Replace("`4", "")
-                .Replace("`5", "")
-                // Очищення заборонених символів Windows для імен файлів
+                .Replace("`5", "");
+
+            // Якщо назва типу двигуна містить підкреслення (SceneObject_SceneObjectFlagAccessor) -> перетворюємо на крапку
+            if (clean.StartsWith("Sandbox") && clean.Contains("_"))
+            {
+                clean = clean.Replace("_", ".");
+            }
+
+            return clean
                 .Replace("<", "_")
                 .Replace(">", "_")
                 .Replace(",", "_")

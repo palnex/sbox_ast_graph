@@ -50,6 +50,10 @@ namespace SboxAstGraph.Exporters
 
         private void ExportMarkdownNotes(CodeGraph graph)
         {
+            // Автоматично витягуємо назву проєкту (наприклад "towertinno")
+            string rawFolderName = Path.GetFileName(_outPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+            string projectName = string.IsNullOrEmpty(rawFolderName) || rawFolderName == "." ? "project" : rawFolderName.Replace(" ", "-").ToLower();
+
             foreach (var node in graph.Nodes.Values)
             {
                 string notePath = Path.Combine(_outPath, $"{node.Id}.md");
@@ -76,7 +80,9 @@ namespace SboxAstGraph.Exporters
                     writer.WriteLine($"type: {typeLabel}");
                     writer.WriteLine($"namespace: {cleanNamespace}");
                     writer.WriteLine("tags:");
+                    writer.WriteLine("  - user");
                     writer.WriteLine(isUi ? "  - user/ui" : "  - user/logic");
+                    writer.WriteLine($"  - {projectName}");
                     writer.WriteLine("---");
                     writer.WriteLine();
 
@@ -281,22 +287,37 @@ namespace SboxAstGraph.Exporters
                     if (richType != null)
                     {
                         writer.WriteLine("---");
-                        writer.WriteLine($"type: {(richType.IsEnum ? "engine_enum" : "engine_class")}");
-                        writer.WriteLine($"namespace: {richType.Namespace}");
-                        if (!string.IsNullOrEmpty(richType.BaseType))
+                        if (richType.IsNested)
                         {
-                            if (registry.TryGetValue(richType.BaseType, out var bType))
+                            writer.WriteLine("type: engine_nested_class");
+                            writer.WriteLine($"namespace: {richType.Namespace}");
+                            if (!string.IsNullOrEmpty(richType.ParentType))
                             {
-                                string parentUniqueId = EngineAnalyzer.GetUniqueId(bType.FullName);
-                                writer.WriteLine($"base_type: \"[[{parentUniqueId}]]\"");
+                                string parentUniqueId = EngineAnalyzer.GetUniqueId(richType.ParentType);
+                                writer.WriteLine($"parent_class: \"[[{parentUniqueId}]]\"");
                             }
-                            else
-                            {
-                                writer.WriteLine($"base_type: \"{richType.BaseType}\"");
-                            }
+                            writer.WriteLine("tags:");
+                            writer.WriteLine("  - engine/nested");
                         }
-                        writer.WriteLine("tags:");
-                        writer.WriteLine(richType.IsEnum ? "  - engine/enum" : "  - engine/class");
+                        else
+                        {
+                            writer.WriteLine($"type: {(richType.IsEnum ? "engine_enum" : "engine_class")}");
+                            writer.WriteLine($"namespace: {richType.Namespace}");
+                            if (!string.IsNullOrEmpty(richType.BaseType))
+                            {
+                                if (registry.TryGetValue(richType.BaseType, out var bType))
+                                {
+                                    string parentUniqueId = EngineAnalyzer.GetUniqueId(bType.FullName);
+                                    writer.WriteLine($"base_type: \"[[{parentUniqueId}]]\"");
+                                }
+                                else
+                                {
+                                    writer.WriteLine($"base_type: \"{richType.BaseType}\"");
+                                }
+                            }
+                            writer.WriteLine("tags:");
+                            writer.WriteLine(richType.IsEnum ? "  - engine/enum" : "  - engine/class");
+                        }
                         writer.WriteLine("---");
                         writer.WriteLine();
                     }

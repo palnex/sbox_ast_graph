@@ -24,6 +24,17 @@ namespace SboxAstGraph.Analysis
                                   (rawType.BaseType != null && rawType.BaseType.EndsWith("Attribute", StringComparison.OrdinalIgnoreCase)) ||
                                   (rawType.BaseType != null && rawType.BaseType.Contains("System.Attribute"));
 
+                    // Автоматично визначаємо вкладені типи за офіційним полем DeclaringType з api.json
+                    bool isNested = !string.IsNullOrEmpty(rawType.DeclaringType) || fullName.Contains("+");
+                    string? parentType = rawType.DeclaringType;
+
+                    if (isNested && string.IsNullOrEmpty(parentType))
+                    {
+                        int separator = fullName.LastIndexOf('+');
+                        if (separator == -1) separator = fullName.LastIndexOf('.');
+                        if (separator != -1) parentType = fullName.Substring(0, separator);
+                    }
+
                     typeNode = new ApiTypeNode
                     {
                         Name = rawType.Name ?? string.Empty,
@@ -33,7 +44,9 @@ namespace SboxAstGraph.Analysis
                         IsInterface = rawType.IsInterface,
                         IsEnum = rawType.IsEnum,
                         IsValueType = rawType.IsEnum || rawType.BaseType == "System.ValueType",
-                        IsAttribute = isAttr, // Призначаємо автоматично визначений статус
+                        IsAttribute = isAttr,
+                        IsNested = isNested,
+                        ParentType = parentType,
                         Summary = rawType.Documentation?.Summary
                     };
                     registry[fullName] = typeNode;

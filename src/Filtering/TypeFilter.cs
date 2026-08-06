@@ -22,6 +22,8 @@ public class TypeFilter
     // Сюди підвантажуватимуться типи двигуна S&box з api.json
     private readonly HashSet<string> _engineTypes = new(StringComparer.OrdinalIgnoreCase);
 
+    private readonly Dictionary<string, string> _engineAliases = new(StringComparer.OrdinalIgnoreCase);
+
     /// <summary>
     /// Конструктор фільтра. Приймає вже розпарсений об'єкт Schema для побудови списку ігнорування.
     /// </summary>
@@ -70,20 +72,15 @@ public class TypeFilter
             return true;
         }
 
-        // 4. Якщо це структура (ValueType), перевіряємо, чи це не S&box або локальний тип
+        // 4. Якщо це структура (ValueType)
         if (typeSymbol.IsValueType)
         {
-            // Якщо це тип двигуна S&box або наш кастомний простір назв - НЕ блокуємо!
-            if (IncludeEngineLinks && (ns.StartsWith("Sandbox") || ns.StartsWith("Editor")))
+            // Якщо це власна структура користувача (не з System, Sandbox чи Editor) -> НЕ блокуємо (це User Code)
+            if (string.IsNullOrEmpty(ns) || (!ns.StartsWith("System") && !ns.StartsWith("Sandbox") && !ns.StartsWith("Editor")))
             {
                 return false;
             }
-            // Якщо це наш власний клас/структура (не системний primitive) - НЕ блокуємо!
-            if (string.IsNullOrEmpty(ns) || !ns.StartsWith("System"))
-            {
-                return false;
-            }
-            return true; // Всі інші системні структури блокуємо
+            return true; // Структури Sandbox/Editor (Color, Vector3, BBox) вважаємо типами Двигуна!
         }
 
         // 5. Перевірка за офіційною схемою S&box
@@ -116,6 +113,18 @@ public class TypeFilter
     }
 
     /// <summary>
+    /// Динамічно розкриває глобальні властивості (Log -> Sandbox.Diagnostics.Logger) з api.json
+    /// </summary>
+    public string ResolveEngineAlias(string name)
+    {
+        if (_engineAliases.TryGetValue(name, out var realType))
+        {
+            return realType;
+        }
+        return name;
+    }
+
+    /// <summary>
     /// Заповнює чорний список типів двигуна S&box з уже готового об'єкта схеми.
     /// </summary>
     private void LoadApiSchema(Schema schema)
@@ -129,14 +138,15 @@ public class TypeFilter
                     if (!string.IsNullOrEmpty(type.Name)) _engineTypes.Add(type.Name);
                     if (!string.IsNullOrEmpty(type.FullName)) _engineTypes.Add(type.FullName);
 
-                    // ДИНАМІЧНО: Реєструємо глобальні властивості-хелпери (Log, Input тощо) з Global* просторів
+                    // ДИНАМІЧНО: Автоматично запам'ятовуємо, що Log -> Sandbox.Diagnostics.Logger
                     if (type.Properties != null && (type.Name?.Contains("Global") == true || type.FullName?.Contains("Global") == true))
                     {
                         foreach (var prop in type.Properties)
                         {
-                            if (prop != null && !string.IsNullOrEmpty(prop.Name))
+                            if (prop != null && !string.IsNullOrEmpty(prop.Name) && !string.IsNullOrEmpty(prop.PropertyType))
                             {
-                                _engineTypes.Add(prop.Name); // Додає "Log", "Input" тощо як відомі двигуну символи!
+                                _engineTypes.Add(prop.Name);
+                                _engineAliases[prop.Name] = prop.PropertyType;
                             }
                         }
                     }
