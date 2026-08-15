@@ -9,6 +9,10 @@ temp_api_stub.cs
 # Local api schema (if you don't want to push 10MB api.json to GitHub)
 api.json
 api-old.json
+make_tree.py
+project_structure.md
+test_query.py
+commands.md
 
 # Obsidian local workspace metadata (prevents commit noise)
 .obsidian/
