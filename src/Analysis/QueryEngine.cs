@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using SboxAstGraph.Model;
 
 namespace SboxAstGraph.Analysis
 {
@@ -32,11 +33,14 @@ namespace SboxAstGraph.Analysis
         }
 
         private readonly CacheGraph _graph = new();
+        private readonly Dictionary<string, ApiTypeNode> _engineRegistry; // <--- Поле реєстру API двигуна
         private readonly Dictionary<string, List<CacheLink>> _adjacencyList = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, List<CacheLink>> _undirectedAdjacencyList = new(StringComparer.OrdinalIgnoreCase);
 
-        public QueryEngine(string cacheFilePath)
+        public QueryEngine(string cacheFilePath, Dictionary<string, ApiTypeNode>? engineRegistry = null)
         {
+            _engineRegistry = engineRegistry ?? new Dictionary<string, ApiTypeNode>(StringComparer.OrdinalIgnoreCase);
+
             if (!File.Exists(cacheFilePath))
             {
                 throw new FileNotFoundException($"Файл кешу не знайдено за шляхом: {cacheFilePath}. Спочатку запустіть повний аналіз.");
@@ -170,85 +174,92 @@ namespace SboxAstGraph.Analysis
             return result.ToString();
         }
 
+
         /// <summary>
-        /// Дає стислий текстовий опис класу та його безпосередніх зв'язків з можливістю фільтрації
+        /// Лаконічний опис класу та його зв'язків (режими: in, out, in_out, engine, all)
+        /// </summary>
+        /// <summary>
+        /// Повертає обрану секцію нотатки (без лічильників та зайвого тексту)
         /// </summary>
         public string Explain(string className, string viewMode = "all")
         {
             var node = _graph.nodes.FirstOrDefault(n => string.Equals(n.id, className, StringComparison.OrdinalIgnoreCase));
             if (node == null)
             {
-                return $"[Помилка] Клас '{className}' не знайдено в базі.";
+                return $"[Error] Class '{className}' was not found.";
             }
 
             var outgoing = _graph.links.Where(l => string.Equals(l.source, className, StringComparison.OrdinalIgnoreCase)).ToList();
             var incoming = _graph.links.Where(l => string.Equals(l.target, className, StringComparison.OrdinalIgnoreCase)).ToList();
 
             var sb = new System.Text.StringBuilder();
-            sb.AppendLine($"Клас: {node.id}");
-            sb.AppendLine($"Простір імен: {node.@namespace}");
-            sb.AppendLine($"Файл: {node.file}");
-            sb.AppendLine("------------------------------------");
+            sb.AppendLine($"# {node.id}");
+            sb.AppendLine($"**Namespace:** `{node.@namespace}` | **Source:** `{node.file}`");
+            sb.AppendLine();
 
             viewMode = viewMode.ToLower().Trim();
 
-            // 1. Вхідні зв'язки (In)
-            if (viewMode == "all" || viewMode == "in")
-            {
-                sb.AppendLine($"Вхідні зв'язки (Dependents: {incoming.Count}):");
-                if (incoming.Count > 0)
-                {
-                    foreach (var edge in incoming)
-                    {
-                        sb.AppendLine($"  <- [{edge.type}] {edge.source} ({edge.details})");
-                    }
-                }
-                else
-                {
-                    sb.AppendLine("  (Ніхто не посилається на цей клас)");
-                }
-                sb.AppendLine();
-            }
+            bool showOut = viewMode is "all" or "out" or "in_out";
+            bool showIn = viewMode is "all" or "in" or "in_out";
+            bool showEngine = viewMode is "all" or "engine" or "engine_deps";
 
-            // 2. Вихідні зв'язки (Out)
-            if (viewMode == "all" || viewMode == "out")
+            // 1. Out
+            if (showOut)
             {
-                sb.AppendLine($"Вихідні зв'язки (Dependencies: {outgoing.Count}):");
+                sb.AppendLine("## Out");
                 var userOutgoing = outgoing.Where(e => !e.type.StartsWith("Engine_")).ToList();
                 if (userOutgoing.Count > 0)
                 {
                     foreach (var edge in userOutgoing)
                     {
-                        sb.AppendLine($"  -> [{edge.type}] {edge.target} ({edge.details})");
+                        sb.AppendLine($"- ─[{edge.type}]─> [[{edge.target}]] `{edge.details}`");
                     }
                 }
                 else
                 {
-                    sb.AppendLine("  (Немає вихідних зв'язків до коду користувача)");
+                    sb.AppendLine("*None*");
                 }
                 sb.AppendLine();
             }
 
-            // 3. Залежності від двигуна S&box
-            if (viewMode == "all" || viewMode == "engine_deps")
+            // 2. In
+            if (showIn)
             {
+                sb.AppendLine("## In");
+                if (incoming.Count > 0)
+                {
+                    foreach (var edge in incoming)
+                    {
+                        sb.AppendLine($"- [[{edge.source}]] ─[{edge.type}]─> `{edge.details}`");
+                    }
+                }
+                else
+                {
+                    sb.AppendLine("*None*");
+                }
+                sb.AppendLine();
+            }
+
+            // 3. Engine API Dependencies
+            if (showEngine)
+            {
+                sb.AppendLine("## Engine API Dependencies");
                 var engineDeps = outgoing.Where(e => e.type.StartsWith("Engine_")).ToList();
-                sb.AppendLine($"Залежності від двигуна S&box (Engine Deps: {engineDeps.Count}):");
                 if (engineDeps.Count > 0)
                 {
                     foreach (var edge in engineDeps)
                     {
                         string cleanType = edge.type.Replace("Engine_", "");
-                        sb.AppendLine($"  -> [{cleanType}] Engine::{edge.target} ({edge.details})");
+                        sb.AppendLine($"- ─[{cleanType}]─> [[{edge.target}]]: `{edge.details}`");
                     }
                 }
                 else
                 {
-                    sb.AppendLine("  (Прямих залежностей від Engine API не виявлено)");
+                    sb.AppendLine("*None*");
                 }
             }
 
-            return sb.ToString();
+            return sb.ToString().TrimEnd();
         }
 
         /// <summary>
@@ -351,6 +362,114 @@ namespace SboxAstGraph.Analysis
             }
 
             return sb.ToString();
+        }
+
+        /// <summary>
+        /// Блискавичний точний пошук (1мс) по типах, методах та властивостях у реальному реєстрі Engine API з фільтрацією за типом
+        /// </summary>
+        public string SearchEngineKeyword(string query, int maxResults = 5, string memberType = "all")
+        {
+            if (string.IsNullOrWhiteSpace(query)) return "*No keyword query provided.*";
+
+            query = query.Trim();
+            memberType = memberType.ToLower().Trim();
+
+            bool allowTypes = memberType is "all" or "class" or "type" or "struct" or "interface" or "enum";
+            bool allowProps = memberType is "all" or "property" or "prop" or "field";
+            bool allowMethods = memberType is "all" or "method";
+
+            var matches = new List<string>();
+
+            // 1. Пошук у багатому реєстрі Engine API, якщо він завантажений
+            if (_engineRegistry != null && _engineRegistry.Count > 0)
+            {
+                // А. Пошук по типах (Класи, Інтерфейси, Структури, Енуми)
+                if (allowTypes)
+                {
+                    foreach (var typeKvp in _engineRegistry.Values)
+                    {
+                        if (matches.Count >= maxResults) break;
+
+                        // Ігноруємо анонімні та службові класи компілятора (<G>$, <M>$, <>c__DisplayClass)
+                        if (typeKvp.FullName.Contains('<') || typeKvp.FullName.Contains('$')) continue;
+
+                        if (typeKvp.Name.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                            typeKvp.FullName.Contains(query, StringComparison.OrdinalIgnoreCase))
+                        {
+                            string badge = typeKvp.IsInterface ? "[INTERFACE]" :
+                                           typeKvp.IsEnum ? "[ENUM]" :
+                                           typeKvp.IsValueType ? "[STRUCT]" : "[CLASS]";
+
+                            matches.Add($"{matches.Count + 1}. {badge} [[{typeKvp.FullName}]] | `{typeKvp.Namespace}`");
+                        }
+                    }
+                }
+
+                // Б. Пошук по властивостях
+                if (allowProps && matches.Count < maxResults)
+                {
+                    foreach (var typeKvp in _engineRegistry.Values)
+                    {
+                        if (matches.Count >= maxResults) break;
+
+                        // Ігноруємо анонімні та службові класи компілятора
+                        if (typeKvp.FullName.Contains('<') || typeKvp.FullName.Contains('$')) continue;
+
+                        foreach (var prop in typeKvp.Properties.Values)
+                        {
+                            if (matches.Count >= maxResults) break;
+
+                            if (prop.Name.Contains(query, StringComparison.OrdinalIgnoreCase))
+                            {
+                                matches.Add($"{matches.Count + 1}. [PROPERTY] [[{typeKvp.FullName}.{prop.Name}]] : `{prop.PropertyType}` | `{typeKvp.FullName}`");
+                            }
+                        }
+                    }
+                }
+
+                // В. Пошук по методах (з виводом аргументів, щоб розрізняти оверлоади!)
+                if (allowMethods && matches.Count < maxResults)
+                {
+                    foreach (var typeKvp in _engineRegistry.Values)
+                    {
+                        if (matches.Count >= maxResults) break;
+
+                        // Ігноруємо анонімні та службові класи компілятора
+                        if (typeKvp.FullName.Contains('<') || typeKvp.FullName.Contains('$')) continue;
+
+                        foreach (var method in typeKvp.Methods.Values)
+                        {
+                            if (matches.Count >= maxResults) break;
+
+                            if (method.Name.Contains(query, StringComparison.OrdinalIgnoreCase))
+                            {
+                                string paramsStr = string.Join(", ", method.Parameters.Select(p => $"`{p.ParameterType}` {p.Name}"));
+                                matches.Add($"{matches.Count + 1}. [METHOD] [[{typeKvp.FullName}.{method.Name}]]({paramsStr}) : `{method.ReturnType}` | `{typeKvp.FullName}`");
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Запасний варіант: якщо реєстр порожній, шукаємо у графі коду користувача
+            if (matches.Count == 0 && _graph != null && _graph.nodes != null && allowTypes)
+            {
+                var matchingNodes = _graph.nodes
+                    .Where(n => !n.id.Contains('<') && !n.id.Contains('$'))
+                    .Where(n => n.id.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                                n.@namespace.Contains(query, StringComparison.OrdinalIgnoreCase))
+                    .Take(maxResults)
+                    .ToList();
+
+                foreach (var node in matchingNodes)
+                {
+                    matches.Add($"{matches.Count + 1}. [CLASS] [[{node.id}]] | `{node.@namespace}`");
+                }
+            }
+
+            if (matches.Count == 0) return $"*No exact keyword matches found for query '{query}' (filter: {memberType}).*";
+
+            return string.Join(Environment.NewLine, matches);
         }
 
         public string FindCycles()
@@ -463,5 +582,59 @@ namespace SboxAstGraph.Analysis
 
             return sb.ToString();
         }
+
+
+        /// <summary>
+        /// Повертає збагачену сигнатуру методу або властивості за її унікальним DocId або FQN
+        /// </summary>
+        public string GetEngineMemberSignature(string docId, string fqn, string memberType)
+        {
+            if (_engineRegistry == null || _engineRegistry.Count == 0 || string.IsNullOrEmpty(fqn)) return "";
+
+            int lastDot = fqn.LastIndexOf('.');
+            if (lastDot <= 0) return "";
+
+            string parentTypeName = fqn.Substring(0, lastDot);
+            string memberName = fqn.Substring(lastDot + 1);
+
+            if (_engineRegistry.TryGetValue(parentTypeName, out var typeNode))
+            {
+                // 1. Пошук для методів
+                if (memberType.Equals("method", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Спочатку пробуємо знайти за точним DocId
+                    if (typeNode.Methods.TryGetValue(docId, out var exactMethod))
+                    {
+                        string paramsStr = string.Join(", ", exactMethod.Parameters.Select(p => $"`{p.ParameterType}` {p.Name}"));
+                        return $"({paramsStr}) : `{exactMethod.ReturnType}`";
+                    }
+
+                    // Запасний варіант: пошук за іменем методу
+                    var matchingMethod = typeNode.Methods.Values.FirstOrDefault(m => string.Equals(m.Name, memberName, StringComparison.OrdinalIgnoreCase));
+                    if (matchingMethod != null)
+                    {
+                        string paramsStr = string.Join(", ", matchingMethod.Parameters.Select(p => $"`{p.ParameterType}` {p.Name}"));
+                        return $"({paramsStr}) : `{matchingMethod.ReturnType}`";
+                    }
+                }
+                // 2. Пошук для властивостей
+                else if (memberType.Equals("property", StringComparison.OrdinalIgnoreCase) || memberType.Equals("prop", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (typeNode.Properties.TryGetValue(docId, out var exactProp))
+                    {
+                        return $": `{exactProp.PropertyType}`";
+                    }
+
+                    var matchingProp = typeNode.Properties.Values.FirstOrDefault(p => string.Equals(p.Name, memberName, StringComparison.OrdinalIgnoreCase));
+                    if (matchingProp != null)
+                    {
+                        return $": `{matchingProp.PropertyType}`";
+                    }
+                }
+            }
+
+            return "";
+        }
+
     }
 }

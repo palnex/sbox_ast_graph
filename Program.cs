@@ -6,6 +6,7 @@ using SboxAstGraph.Workspace;
 using SboxAstGraph.Filtering;
 using SboxAstGraph.Analysis;
 using SboxAstGraph.Exporters;
+using SboxAstGraph.Model;
 
 namespace SboxAstGraph
 {
@@ -62,7 +63,6 @@ namespace SboxAstGraph
                 string userCache = cachePath;
                 if (string.IsNullOrEmpty(userCache))
                 {
-                    // Шукаємо graph.json у підпапці vec/
                     userCache = Path.Combine(outPath, "user_code", "vec", "graph.json");
                     if (!File.Exists(userCache))
                     {
@@ -70,7 +70,18 @@ namespace SboxAstGraph
                     }
                 }
 
-                // Якщо кеш відсутній, автоматично запускаємо перший аналіз у фоні
+                // 1. Завантажуємо схему Engine API
+                var mcpSchema = await SchemaDownloader.GetLatestSchemaAsync(apiPath);
+                Dictionary<string, ApiTypeNode>? engineRegistry = null;
+
+                if (mcpSchema != null)
+                {
+                    var apiParser = new EngineApiParser();
+                    engineRegistry = apiParser.Parse(mcpSchema);
+                    Console.Error.WriteLine($"[MCP Setup] Engine API реєстр завантажено ({engineRegistry.Count} типів).");
+                }
+
+                // 2. Автоматичний перший аналіз коду користувача, якщо кеш відсутній
                 if (!File.Exists(userCache))
                 {
                     Console.Error.WriteLine("[MCP Setup] Кеш проєкту не знайдено. Автоматичний перший аналіз...");
@@ -79,7 +90,6 @@ namespace SboxAstGraph
 
                     var loader = new ProjectLoader();
                     var sourceFiles = loader.FindSourceFiles(srcPath);
-                    var mcpSchema = await SchemaDownloader.GetLatestSchemaAsync(apiPath);
                     var compilation = loader.CreateCompilation(sourceFiles, mcpSchema);
 
                     var filter = new TypeFilter(mcpSchema);
@@ -95,7 +105,7 @@ namespace SboxAstGraph
                 try
                 {
                     Console.Error.WriteLine($"[MCP Setup] Завантаження графу з: {userCache}");
-                    var queryEngine = new QueryEngine(userCache);
+                    var queryEngine = new QueryEngine(userCache, engineRegistry);
                     var librarianClient = new LibrarianClient();
                     var mcpServer = new McpServer(queryEngine, librarianClient, outPath, srcPath, mcpStdout);
 

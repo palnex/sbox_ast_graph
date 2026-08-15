@@ -676,13 +676,8 @@ namespace SboxAstGraph.Exporters
         {
             if (_chunksToIndex.Count == 0) return;
 
-            Console.WriteLine($"\n[C#] Підготовка до фонової індексації {_chunksToIndex.Count} чанків...");
-
-            // Запускаємо відправку в окремому асинхронному потоці, щоб не блокувати головний потік C#
-            await Task.Run(async () =>
-            {
-                await _librarianClient.IndexProjectAsync(projectId, _outPath, _chunksToIndex);
-            });
+            Console.WriteLine($"\n[C# Bridge] Підготовка до індексації {_chunksToIndex.Count} блоків коду та документації...");
+            await _librarianClient.IndexProjectAsync(projectId, _outPath, _chunksToIndex);
         }
 
     }

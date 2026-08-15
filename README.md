@@ -1,221 +1,198 @@
 # SboxAstGraph
 
-Спеціалізований, легковагий інструмент статичного аналізу коду, двопрохідної
-генерації віртуальних SDK, побудови графів залежностей та миттєвої навігації по
-архітектурі проєктів на базі двигуна S&box (Source 2 / .NET 10).
+A specialized, lightweight static code analysis tool, virtual SDK generator, dependency graph builder, and Model Context Protocol (MCP) server designed specifically for the S&box engine ecosystem (.NET 10 / Source 2).
 
-Утиліта оптимізована для побудови архітектурних карт кастомного ігрового коду та
-користувацького інтерфейсу (Razor), відсікаючи технічний шум двигуна та
-стандартних бібліотек C#. Результати сумісні з Obsidian Canvas, Markdown-базами
-знань та зовнішніми ШІ-асистентами для кодингу (через інтегрований швидкий
-CLI-інтерфейс запитів).
+> **Alpha Disclaimer & Note for Facepunch**:
+> This repository is a work-in-progress published to showcase my current ideas, experiments, and progress for my job application to **Facepunch Studios**.
+> 
+> Please note that even this high-level architectural overview and documentation do not 100% reflect the exact current state of the codebase yet. I am actively testing, refactoring, and debugging the parser, MCP integration, and AI logic.
+> 
+> If you encounter any ambiguities while reviewing the repository, feeding the codebase into an AI assistant (like Cursor or Claude) will give you a live breakdown of the current implementation.
+> 
+> Hi Facepunch team :3
 
-## 1. Проблеми, які вирішує інструмент
+---
+---
 
-Стандартні генератори графів залежностей (на кшталт Graphify або універсальних
-AST-парсерів) зазвичай неефективні в екосистемі S&box з кількох причин:
+## 1. Current Project Status & Vision
 
-1.  Технічний шум двигуна: Вони створюють тисячі зайвих зв'язків для стандартних
-    типів (Vector3, Component, Panel, int, List), перетворюючи граф на нечитне
-    "павутиння".
-2.  Специфічні патерни зв'язків: Вони не вміють розпізнавати семантичні патерни
-    зв'язку, такі як звернення до синглтонів (GameManager.Instance.Property),
-    підписку на C# Action-події (+=) та їхні виклики (?.Invoke()).
-3.  Відсутність DLL-збірок двигуна при локальному аналізі: Оскільки оригінальні
-    збірки S&box (Sandbox.Game.dll, Sandbox.UI.dll тощо) не поширюються через
-    публічні NuGet-репозиторії, стандартний семантичний аналіз Roslyn без
-    доступу до них повністю руйнується, повертаючи помилки відсутніх типів
-    (CS0246).
-4.  Пастка ручного написання заглушок (Stub Maintenance): Спроби вручну
-    підтримувати тисячі муляжів класів ігрового API для Roslyn призводять до
-    конфліктів сигнатур при кожному оновленні гри.
+### Status & Limitations
+This utility is an experimental Alpha release. Certain components currently rely on hardcoded heuristic rules and schema transformations.
 
-SboxAstGraph вирішує ці проблеми через гібридний підхід:
+* **In-Memory Assembly Generation**: The tool leverages `Facepunch.AssemblySchema` to dynamically build in-memory C# Reference Assemblies (`.dll`) directly via Roslyn metadata references from `api.json`. This solves missing assembly errors (CS0246/CS0234) without needing local binary distributions of the engine.
+* **Parsing Verification**: The parser and semantic walker cover major C# and Razor usage patterns, but full parsing coverage across all complex user codebases is not 100% guaranteed yet. Further broad testing, edge-case handling, and debugging are ongoing.
 
-  - Автоматично трансформує офіційну схему api.json S&box на робочу віртуальну
-    збірку (Reference Assembly) в оперативній пам'яті за допомогою
-    самозагоювального компілятора заглушок. Це усуває помилки CS0246 та
-    забезпечує точність семантичної моделі Roslyn.
-  - Відокремлює аналіз від подальшого використання. Робота з кодом ділиться на
-    дві незалежні системи.
+### Unified Vision: MCP Expansion & S&box Editor Integration
+The query capabilities of SboxAstGraph (`find_path`, `check_cycles`, `get_metrics`, and semantic search) form a unified engine. Currently, these capabilities are being expanded along two parallel tracks that share the same backend:
 
-## 2. Архітектурний розподіл (Система 1 та Система 2)
+1. **Native S&box Editor Tool**: Packaging the engine as an integrated S&box Editor Tab. This will allow developers to visually inspect class connections, read API summaries, and navigate code relationships directly inside the editor while coding.
+2. **Deep AI Context via MCP**: Exposing graph-level pathfinding, cycle detection, and metrics directly to AI coding agents. Both the human developer (via the Editor Tab) and the AI agent (via MCP) consume the exact same underlying graph data. This replaces slow web-scraping solutions (such as `sbox-mcp-documentation`) with instant, local, in-editor context.
+3. **Future Engine Reflection**: Future versions aim to complement static `api.json` stubbing with direct reflection against the active S&box engine process.
 
-Інструмент розділено на два функціональні блоки, які можна запускати разом або
-ізольовано за допомогою параметра --mode:
+---
 
-Система 1: Аналіз користувацького коду (--mode user)
+## 2. Problems Addressed
 
-  - Опис: Повністю завершена та оптимізована система. Вона рекурсивно сканує
-    кастомні .cs та .razor файли вашого ігрового проєкту.
-  - Результат: Створює чистий граф зв'язків у форматі graph.json, Obsidian
-    Canvas та Markdown-нотаток для кожного вашого класу.
-  - Точність фільтрації: На основі api.json система повністю відсікає типи
-    двигуна, фокусуючись виключно на тому коді, який написав користувач. Це
-    усуває хаос на графіках.
+Standard C# dependency graph generators and generic AST parsers face several hurdles when applied to S&box projects:
 
-Система 2: Документування API двигуна (--mode engine)
+1. **Engine Noise**: Generic analyzers treat standard engine primitives, UI components, and collections (`Vector3`, `Component`, `Panel`, `List<T>`) as primary graph nodes, resulting in unreadable "spaghetti" graphs.
+2. **S&box Specific Mechanics**: Generic tools fail to resolve custom semantic patterns, such as singleton access chains (`GameManager.Instance.Property`), C# Action subscriptions (`+=`), invocation delegates (`?.Invoke()`), and inline Razor tag expressions (`<UpgradeNode />`, `@Formulas.Method()`).
+3. **Missing Engine Assemblies**: Standard Roslyn semantic analysis breaks without access to official engine binaries (`Sandbox.Game.dll`, `Sandbox.UI.dll`), which are not hosted on public NuGet feeds.
+4. **Stub Maintenance**: Manually maintaining mock assemblies for evolving engine APIs leads to breaking signature mismatches.
 
-  - Опис: Спеціалізований генератор документації. Він парсить метадані з
-    офіційної схеми api.json та перетворює їх на структуровану Markdown-довідку
-    з повним описом полів, властивостей, методів та перевантажень.
-  - Фільтрація супер-вузлів (Under Development): Система перебуває в режимі
-    активного доопрацювання. Зокрема, реалізується логіка повного виключення
-    "супер-нод" (таких як примітиви, структури Vector3, Color, Rotation), що
-    запобігає появі тисяч паразитних стрілок на графіку самого ігрового API.
+SboxAstGraph solves these issues by compiling the official S&box `api.json` schema into an in-memory `.dll` reference assembly using a self-healing compiler loop, separating heavy code analysis from fast query execution and AI context retrieval.
 
-Комбінований режим (--mode both)
+---
 
-За замовчуванням утиліта запускає обидва процеси послідовно.
+## 3. Architecture & CLI Arguments
 
-## 3. Ключові можливості аналізатора
+The utility is controlled via CLI arguments:
 
-  - Двопрохідний аналіз із Fuzzy-фолбеком: Якщо під час другого проходу
-    семантична модель Roslyn не може розпізнати тип через відсутність зовнішніх
-    посилань, утиліта автоматично перемикається на синтаксичний аналіз тексту і
-    відновлює зв'язок за збігом імен локальних класів.
-  - Самозагоювальний компілятор заглушок (Self-Healing SDK Loop): Якщо спроба
-    компіляції віртуальної збірки API S&box зазнає невдачі через відсутні
-    зовнішні типи (наприклад, типи з Facepunch.ActionGraphs), система перехоплює
-    помилки компілятора CS0246/CS0234, динамічно на льоту генерує безпечні
-    заглушки та перезапускає компіляцію.
-  - Захист від колізій імен (GP_ Prefixing): Усі дженерик-параметри класів та
-    методів автоматично отримують префікс GP_ (наприклад,
-    SceneCubemap<GP_Texture>), що унеможливлює конфлікти типів.
-  - Авто-корекція невідповідності дженериків (Generic Arity Fallback): Якщо тип
-    є дженериком, але використовується без аргументів, система автоматично
-    підставляє <object> (наприклад, Widget -> Widget<object>).
-  - Парсинг Razor-інтерфейсів: Обробка .razor за допомогою легкого препроцесора.
-    Специфічний синтаксис та блок @code загортаються у віртуальний частковий
-    клас C# для аналізу через Roslyn.
-  - UI Вкладеність (Markup Tag & Expressions): Аналізатор сканує HTML-розмітку
-    .razor файлів на наявність тегів інших кастомних компонентів (наприклад,
-    <UpgradeNode />) та викликів логіки через символ @ (наприклад,
-    @Formulas.Method()), забезпечуючи повне покриття зв'язків.
-  - Підтримка файлів ігнорування .astignore: Дозволяє виключати автогенеровані
-    файли, тести або окремі директорії за аналогією з .gitignore.
+### Primary Execution Modes (`--mode`)
+* `--mode user`: Recursively scans `.cs` and `.razor` files in the user's game project directory. Generates a filtered dependency graph (`graph.json`), an Obsidian Canvas visualization (`graph.canvas`), and structured Markdown documentation per class.
+* `--mode engine`: Parses metadata from `api.json` and exports structured Markdown documentation for engine types, methods, fields, and properties.
+* `--mode both`: Executes both User Code Analysis and Engine API Documentation sequentially.
+* `--mode mcp`: Launches the stdio-based MCP server for AI coding assistants.
 
-## 4. Інтелектуальний пошуковий рушій (Query Engine)
+### Key CLI Parameters
+* `--src "<path>"`: Path to the target user game project source folder.
+* `--out "<path>"`: Output directory for generated graphs, vector indexes, and Markdown files.
+* `--api "<path>"`: Path to the local `api.json` schema file.
+* `--engine-links`: Optional flag. When enabled, preserves direct dependency links from User Code nodes to S&box Engine API nodes in the graph instead of stripping them.
 
-Основна перевага архітектури інструменту — розділення аналізу та навігації.
-Після того, як повний аналіз один раз згенерував файл graph.json, ви можете
-робити швидкі запити до архітектури вашого проєкту.
+---
 
-Query Engine виконує запити за мілісекунди (sub-100ms) без повторного парсингу
-Roslyn та читання файлів коду на диску. Це робить його інструментом інтеграції
-для зовнішніх ШІ-асистентів, яким потрібно швидко орієнтуватися в архітектурі
-вашої гри.
+## Recommended Visualization Workflow: Obsidian Graph View
 
-Доступні команди пошукового рушія:
+The exported output directory (`--out`) is structured to function natively as an **Obsidian Vault**.
 
-1. Пошук шляху (--cmd path)
+For the best visual experience, open the output directory in Obsidian and use the native **Graph View** (rather than opening `.canvas` files). Because every user class and engine type is exported as an interconnected Markdown note (`.md`) with wikilinks (`[[ClassName]]`), Obsidian's native Graph View automatically renders a clean, dynamic, and interactive dependency map of your codebase.
 
-Прокладає найкоротший шлях логіки між двома класами за допомогою алгоритму BFS.
+---
 
-  - Спрямований пошук (за замовчуванням): Шукає строго за напрямком викликів у
-    коді.
-  - Неспрямований пошук (--undirected): Дозволяє знайти зв'язок між двома
-    класами, навіть якщо вони пов'язані опосередковано або через зворотні
-    залежності. Напрямок стрілок (<── чи ──>) чітко показує вектор взаємодії.
+## 4. Model Context Protocol (MCP) Integration
 
-Приклад запиту:
+When launched with `--mode mcp`, SboxAstGraph acts as a language-model context provider over stdio.
 
+### Client Configuration Example
+Add the compiled executable to your MCP settings file (e.g., Cursor, Claude Desktop, or Windsurf):
+
+```json
+{
+  "mcpServers": {
+    "sbox-ast-graph": {
+      "command": "C:/Users/yenro/Desktop/sbox_ast_graph/bin/Release/net10.0/SboxAstGraph.exe",
+      "args": [
+        "--mode", "mcp",
+        "--src", "C:/Users/yenro/Desktop/s&box-my-games/towertinno",
+        "--api", "C:/Users/yenro/Desktop/sbox_ast_graph/api.json",
+        "--out", "C:/Users/yenro/Desktop/Personal - Agents - Memory/sbox/library"
+      ],
+      "cwd": "C:/Users/yenro/Desktop/sbox_ast_graph"
+    }
+  }
+}
+```
+
+### Currently Implemented Base Tools
+1. `sbox_engine_search_api`: Searches the official S&box Engine API using keyword matching, semantic vector matching, or a hybrid strategy.
+2. `sbox_engine_explain`: Retrieves full or sectioned API documentation for any S&box engine type, including member signatures and description summaries.
+3. `sbox_user_semantic_search`: Performs vector RAG search over the user's local game project codebase.
+4. `sbox_user_explain_class`: Returns incoming/outgoing code dependencies and engine API usages for a specified user class.
+
+### MCP Tool Expansion Plans (Tied to In-Editor Debugging)
+The MCP toolset is currently expanding to expose the full analytical power of the C# `QueryEngine` to AI agents:
+* `sbox_user_find_path`: Exposing graph pathfinding to allow AI to analyze call chains and execution routes between arbitrary user components.
+* `sbox_user_check_cycles`: Exposing circular dependency detection to help AI catch architecture loops during refactoring.
+* `sbox_user_get_metrics`: Exposing class weight metrics so AI agents can identify god-objects or dead code.
+
+---
+
+## 5. Hybrid AI Engine (Librarian AI)
+
+In addition to Roslyn AST parsing, SboxAstGraph integrates a local Python-based vector search service (`librarian_ai`).
+
+* **Embeddings Model**: Utilizes `ibm-granite-97m` (384-dimensional embeddings) to index both user code summaries and S&box engine API documentation.
+* **Quantized Vector Index**: Uses 4-bit TurboVec quantization (`turbovec.IdMapIndex`) paired with binary `.pkl` caching, enabling sub-100ms semantic retrieval across 15,000+ API and code nodes.
+* **Automatic Process Lifecycle**: The C# runtime (`LibrarianClient.cs`) automatically detects if the Python daemon (`librarian_service.py`) is offline, spawns the process in the background, and handles process lifecycle management.
+* **Idle Shutdown**: The local AI service automatically shuts down after 30 minutes of inactivity to preserve system memory.
+
+---
+
+## 6. CLI Query Engine
+
+For quick manual inspection without Roslyn compilation overhead, SboxAstGraph includes a CLI query mode operating directly on pre-built `graph.json` files:
+
+### Pathfinding (`--cmd path`)
+Finds the shortest dependency route between two classes using BFS.
+```bash
 dotnet run -- --cmd path --arg1 ProgressionMath --arg2 SwarmManager --out "./output_test" --undirected
+```
 
-Результат:
-
-Знайдено неспрямований зв'язок між ProgressionMath та SwarmManager (6 кроків):
-1. [ProgressionMath] <──(Calls: Method: GetLinearBulkCost())── [Formulas]
-2. [Formulas] ──(References: Property: CardProgression)──> [StatDefinition]
-3. [StatDefinition] <──(References: Property: FriendlyName)── [GameMetadata]
-4. [GameMetadata] <──(Calls: HTML Expression)── [ShopMaster]
-5. [ShopMaster] ──(ReferencesSingleton: Property: CurrentState)──> [GameManager]
-6. [GameManager] ──(CallsSingleton: Method: StartRadialDisintegration())──> [SwarmManager]
-
-2. Аналіз циклічних залежностей (--cmd cycles або --cmd loops)
-
-Автоматично шукає всі замкнені архітектурні петлі в коді (наприклад, ClassA ->
-ClassB -> ClassA). Система деталізує зв'язок, вказуючи, через яке саме поле чи
-метод утворюється петля.
-
-Приклад запиту:
-
+### Circular Dependency Detection (`--cmd cycles`)
+Identifies circular reference loops in the codebase.
+```bash
 dotnet run -- --cmd cycles --out "./output_test"
+```
 
-Результат:
-
-=== АНАЛІЗ ЦИКЛІЧНИХ ЗАЛЕЖНОСТЕЙ ===
-[Попередження] Виявлено 2 унікальних циклічних петель:
-1. [GameManager] ──(CallsSingleton: Method: StartRadialDisintegration())──> [SwarmManager] ──(CallsSingleton: Method: AddMoney())──> [GameManager]
-2. [SwarmManager] ──(References: Field: _renderObject)──> [SwarmRenderObject] ──(References: Field: _manager)──> [SwarmManager]
-
-3. Швидке пояснення компонента (--cmd explain)
-
-Виводить структуроване зведення про клас: його простір імен, файл, а також
-списки всіх його прямих залежностей (вихідні зв'язки) та залежних від нього
-класів (вхідні зв'язки).
-
-Приклад запиту:
-
+### Class Inspection (`--cmd explain`)
+Outputs namespace, source location, incoming dependencies, and outgoing dependencies for a class.
+```bash
 dotnet run -- --cmd explain --arg1 StatRegistry --out "./output_test"
+```
 
-4. Архітектурні метрики та ваги (--cmd metrics або --cmd weight)
-
-Аналізує весь граф та виводить:
-
-  - Найважливіші хаби: Класи з найбільшою кількістю вхідних зв'язків (зміна цих
-    класів має високий ризик зламати інші системи).
-  - Потенційні "God Nodes": Класи з найбільшою вихідною вагою, які зв'язують
-    занадто багато логіки на собі.
-  - Ізольовані класи: Класи з вагою 0 (потенційно неактивний або мертвий код).
-
-Приклад запиту:
-
+### Metrics & Weight Analysis (`--cmd metrics`)
+Calculates graph hubness, outgoing weight, and isolated nodes.
+```bash
 dotnet run -- --cmd metrics --out "./output_test"
+```
 
-5. Розумний текстовий пошук (--cmd search)
+### Semantic Search (`--cmd search`)
+Runs a semantic vector query against the local codebase via `librarian_ai`.
+```bash
+dotnet run -- --cmd search --arg1 "player movement acceleration" --out "./output_test"
+```
 
-Пошук по базі класів за назвою чи простором імен.
+---
 
-## 5. Системні вимоги та залежності
+## 7. Configuration & File Filtering
 
-Для збірки та запуску утиліти необхідні:
+The analyzer supports `.astignore` files placed in the project root to exclude specific folders or files from parsing (similar to `.gitignore`):
 
-  - SDK: .NET 10 (або новіший).
-  - Основні NuGet-пакети:
-      - Microsoft.CodeAnalysis.CSharp (Бібліотека компілятора Roslyn для
-        парсингу та побудови семантичної моделі C#).
-      - Facepunch.AssemblySchema (Офіційний пакет Facepunch для роботи з
-        JSON-схемою API S&box).
-
-## 6. Інструкція з використання
-
-Налаштування файлу ігнорування .astignore
-
-Створіть файл .astignore у корені вашої папки з кодом, щоб виключити сторонній
-код, автогенерацію чи папки тестів:
-
-### Папки з тестами
+```gitignore
+# Test directories
 Tests/
 ThirdParty/
 
-### Окремі файли
+# Specific files or patterns
 temp_api_stub.cs
 *.designer.cs
+```
 
-Крок 1: Запуск повного аналізу та генерація кешу
+---
 
-Виконайте команду запуску аналізу. Вкажіть шлях до коду гри та папку для
-результатів (наприклад, ./output_test):
+## 8. Prerequisites & Setup
 
-dotnet run -- --src "C:/my_sbox_game" --out "./output_test" --mode user
+### Environment Requirements
+* **SDK**: .NET 10 SDK (or .NET 8).
+* **Python**: Python 3.10+ (required for the `librarian_ai` service).
+* **NuGet Packages**:
+  * `Microsoft.CodeAnalysis.CSharp` (Roslyn compiler platform).
+  * `Facepunch.AssemblySchema` (S&box API schema library).
 
-Ця команда проаналізує ваш код, створить у папці ./output_test/user_code/ файли
-graph.json, graph.canvas та Markdown-документацію для кожного класу.
+### Building & Running
 
-Крок 2: Швидкі запити до архітектури
+1. **Download AI Model Weights**:
+   ```bash
+   python librarian_ai/download_model.py
+   ```
 
-Після того, як кеш згенеровано, ви можете миттєво виконувати будь-які запити,
-просто вказуючи папку з виходом (--out "./output_test"):
+2. **Build the Project**:
+   ```bash
+   dotnet build -c Release
+   ```
 
-dotnet run -- --cmd explain --arg1 SwarmManager --out "./output_test"
+3. **Run Code Analysis**:
+   ```bash
+   dotnet run -- --src "C:/PathToYourSboxGame" --out "./output_test" --mode user --engine-links
+   ```

@@ -25,7 +25,7 @@
     - `FINE_TUNE_GUIDE.md` `(63L, 3.4KB)`
     - `NEEDLE_SPEC.md` `(46L, 4.5KB)`
     - `export_to_onnx.py` `(157L, 7.1KB)`
-    - `librarian_service.py` `(213L, 8.9KB)`
+    - `librarian_service.py` `(225L, 8.2KB)`
     - `needle_benchmark.py` `(212L, 8.2KB)`
     - `parser.py` `(155L, 7.6KB)`
     - `run_comparison_test.py` `(163L, 7.3KB)`
@@ -65,23 +65,23 @@
   - **src/**
     - **Analysis/**
       - `CodeAnalyzer.cs` `(121L, 6.0KB)`
-      - `EngineAnalyzer.cs` `(217L, 9.8KB)`
-      - `EngineApiParser.cs` `(140L, 6.8KB)`
-      - `QueryEngine.cs` `(467L, 19.2KB)`
-      - `SemanticWalker.cs` `(279L, 11.4KB)`
+      - `EngineAnalyzer.cs` `(226L, 10.2KB)`
+      - `EngineApiParser.cs` `(153L, 7.5KB)`
+      - `QueryEngine.cs` `(528L, 21.2KB)`
+      - `SemanticWalker.cs` `(405L, 19.0KB)`
       - `TypeResolver.cs` `(137L, 5.4KB)`
     - **Exporters/**
-      - `GraphExporter.cs` `(669L, 30.3KB)`
+      - `GraphExporter.cs` `(685L, 31.5KB)`
     - **Filtering/**
-      - `TypeFilter.cs` `(136L, 5.8KB)`
+      - `TypeFilter.cs` `(166L, 7.0KB)`
     - **Mcp/**
-      - `McpServer.cs` `(243L, 10.0KB)`
+      - `McpServer.cs` `(365L, 16.5KB)`
     - **Model/**
       - `CodeGraph.cs` `(71L, 2.8KB)`
-      - `EngineApiModel.cs` `(62L, 2.4KB)`
+      - `EngineApiModel.cs` `(64L, 2.7KB)`
       - `TypeSignature.cs` `(18L, 1.1KB)`
     - **Workspace/**
-      - `LibrarianClient.cs` `(232L, 10.8KB)`
+      - `LibrarianClient.cs` `(225L, 8.6KB)`
       - `ProjectLoader.cs` `(207L, 8.5KB)`
       - `RazorPreProcessor.cs` `(90L, 3.7KB)`
       - `SchemaDownloader.cs` `(63L, 2.6KB)`
