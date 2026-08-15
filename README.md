@@ -81,14 +81,14 @@ Add the compiled executable to your MCP settings file (e.g., Cursor, Claude Desk
 {
   "mcpServers": {
     "sbox-ast-graph": {
-      "command": "C:/Users/yenro/Desktop/sbox_ast_graph/bin/Release/net10.0/SboxAstGraph.exe",
+      "command": "C:/PathTo/sbox_ast_graph/bin/Release/net10.0/SboxAstGraph.exe",
       "args": [
         "--mode", "mcp",
-        "--src", "C:/Users/yenro/Desktop/s&box-my-games/towertinno",
-        "--api", "C:/Users/yenro/Desktop/sbox_ast_graph/api.json",
-        "--out", "C:/Users/yenro/Desktop/Personal - Agents - Memory/sbox/library"
+        "--src", "C:/PathTo/YourSboxGameProject",
+        "--api", "C:/PathTo/sbox_ast_graph/api.json",
+        "--out", "C:/PathTo/OutputLibrary"
       ],
-      "cwd": "C:/Users/yenro/Desktop/sbox_ast_graph"
+      "cwd": "C:/PathTo/sbox_ast_graph"
     }
   }
 }
