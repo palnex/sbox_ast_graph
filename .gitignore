@@ -49,3 +49,15 @@ librarian_ai/models/
 
 # Тимчасовий скрипт
 ssssss.py
+
+# --- EXPERIMENTAL & FINE-TUNING PYTHON SCRIPTS ---
+librarian_ai/export_to_onnx.py
+librarian_ai/needle_benchmark.py
+librarian_ai/parser.py
+librarian_ai/run_comparison_test*.py
+librarian_ai/run_demo.py
+librarian_ai/test_*.py
+librarian_ai/train.py
+librarian_ai/training_data/
+checkpoints/
+help/print_guide.py
