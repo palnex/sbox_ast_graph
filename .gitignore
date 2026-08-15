@@ -61,3 +61,6 @@ librarian_ai/train.py
 librarian_ai/training_data/
 checkpoints/
 help/print_guide.py
+librarian_ai/needle_torch
+librarian_ai/FINE_TUNE_GUIDE.md
+librarian_ai/NEEDLE_SPEC.md
