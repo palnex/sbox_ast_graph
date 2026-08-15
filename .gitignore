@@ -10,9 +10,9 @@ temp_api_stub.cs
 api.json
 
 # Obsidian local workspace metadata (prevents commit noise)
-.obsidian/workspace.json
-.obsidian/graph.json
-.obsidian/workspace-mobile.json
+.obsidian/
+
+.vscode/
 
 # Local test files
 *-test.cs
