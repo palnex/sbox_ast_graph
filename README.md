@@ -7,7 +7,7 @@ A specialized, lightweight static code analysis tool, virtual SDK generator, dep
 > 
 > Please note that even this high-level architectural overview and documentation do not 100% reflect the exact current state of the codebase yet. I am actively testing, refactoring, and debugging the parser, MCP integration, and AI logic.
 > 
-> If you encounter any ambiguities while reviewing the repository, feeding the codebase into an AI assistant (like Cursor or Claude) will give you a live breakdown of the current implementation.
+> If you encounter any ambiguities while reviewing the repository, feeding the codebase into an AI assistant will give you a live breakdown of the current implementation.
 > 
 > Hi Facepunch team :3
 
