@@ -1,66 +1,28 @@
-# .NET Build outputs
-bin/
-obj/
+# This file describes files and paths that should not be tracked by Git version control
+# https://git-scm.com/docs/gitignore
 
-# Test output directory
-output_test/
-temp_api_stub.cs
+# Auto-generated code editor files
+.vs/*
+.vscode/*
+*.csproj
+obj
+bin
+Properties/*
+code/obj/*
+code/Properties/*
 
-# Local api schema (if you don't want to push 10MB api.json to GitHub)
-api.json
-api-old.json
-make_tree.py
-project_structure.md
-test_query.py
-commands.md
+# Auto-generated asset related files
+.sbox/*
+*.generated.*
+*.*_c
+*.los
+*.vpk
+*launchSettings.json
+*.sln
+*.slnx
 
-# Obsidian local workspace metadata (prevents commit noise)
-.obsidian/
+*idea
 
-.vscode/
-
-# Local test files
-*-test.cs
-*.razor
-
-# --- PYTHON & WSL CACHE ---
-# Кеш та тимчасові файли Python компилятора
-__pycache__/
-*.py[cod]
-*$py.class
-
-# Віртуальні оточення (якщо вони випадково будуть створені в папці проєкту)
-.venv*/
-venv*/
-
-# Тимчасові системні файли
-.DS_Store
-Thumbs.db
-
-# Тимчасові бекапи моделей (ігнорує будь-яку папку, що закінчується на -----OLD)
-*-----OLD/
-
-# Ігноруємо скачані вагові моделі та бінарники AI
-librarian_ai/models/
-*.safetensors
-*.onnx
-*.bin
-*.pkl
-
-# Тимчасовий скрипт
-ssssss.py
-
-# --- EXPERIMENTAL & FINE-TUNING PYTHON SCRIPTS ---
-librarian_ai/export_to_onnx.py
-librarian_ai/needle_benchmark.py
-librarian_ai/parser.py
-librarian_ai/run_comparison_test*.py
-librarian_ai/run_demo.py
-librarian_ai/test_*.py
-librarian_ai/train.py
-librarian_ai/training_data/
-checkpoints/
-help/print_guide.py
-librarian_ai/needle_torch
-librarian_ai/FINE_TUNE_GUIDE.md
-librarian_ai/NEEDLE_SPEC.md
+# Exported / standalone games
+Exports/
+Assets/test_blender/gude-2026-06-23.log
