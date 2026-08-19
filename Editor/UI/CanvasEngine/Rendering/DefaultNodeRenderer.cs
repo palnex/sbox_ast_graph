@@ -7,6 +7,65 @@ using Sandbox;
 namespace ArchitectureVisualizer.UI.CanvasEngine.Rendering;
 
 /// <summary>
+/// Lightweight, high-performance circular node renderer (Obsidian Graph style).
+/// </summary>
+public sealed class DefaultNodeRenderer : INodeRenderer
+{
+    public void RenderNode( PaintContext ctx, CanvasNode node )
+    {
+        Vector2 screenPos = ctx.Transform.WorldToScreen( node.Center );
+        float radius = MathF.Max( 4f, (6f + node.Mass * 1.5f) * ctx.Transform.Zoom );
+
+        Paint.Antialiasing = true;
+
+        // 1. Selection / Hover Halo
+        if ( node.IsSelected )
+        {
+            Paint.ClearPen();
+            Paint.SetBrush( ctx.Theme.SelectionColor.WithAlpha( 0.4f ) );
+            Paint.DrawCircle( screenPos, radius + 5f );
+        }
+        else if ( node.IsHovered )
+        {
+            Paint.ClearPen();
+            Paint.SetBrush( ctx.Theme.HoverColor.WithAlpha( 0.35f ) );
+            Paint.DrawCircle( screenPos, radius + 3f );
+        }
+
+        // 2. Node Core Circle
+        Color nodeColor = node.IsSelected ? ctx.Theme.SelectionColor :
+                          node.IsHovered ? ctx.Theme.HoverColor :
+                          node.AccentColor;
+
+        Paint.ClearPen();
+        Paint.SetBrush( nodeColor );
+        Paint.DrawCircle( screenPos, radius );
+
+        // 3. Node Title Label (Obsidian-style: only on zoom or if hovered/selected)
+        if ( (ctx.Transform.Zoom > 0.8f || node.IsHovered || node.IsSelected) && !ctx.IsLowDetail )
+        {
+            int fontSize = (int)Math.Clamp( 11f * ctx.Transform.Zoom, 9f, 13f );
+            Paint.SetFont( "Segoe UI", fontSize, 600 );
+            Paint.SetPen( ctx.Theme.TextColor );
+
+            Rect labelRect = new( screenPos.x - 80f, screenPos.y + radius + 2f, 160f, fontSize + 4 );
+            Paint.DrawText( labelRect, node.Title, TextFlag.Center );
+        }
+    }
+}
+
+
+
+
+
+/* using System;
+using ArchitectureVisualizer.UI.CanvasEngine.Models;
+using Editor;
+using Sandbox;
+
+namespace ArchitectureVisualizer.UI.CanvasEngine.Rendering;
+
+/// <summary>
 /// Default clean vector renderer for node cards with headers, icons, pins, and selection halos.
 /// </summary>
 public sealed class DefaultNodeRenderer : INodeRenderer
@@ -95,4 +154,4 @@ public sealed class DefaultNodeRenderer : INodeRenderer
         Paint.SetBrush( haloColor );
         Paint.DrawRect( rect.Grow( radius ), 8f );
     }
-}
+} */

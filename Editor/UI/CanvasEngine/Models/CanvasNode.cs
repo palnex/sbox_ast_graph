@@ -25,6 +25,11 @@ public sealed class CanvasNode
     public string Subtitle { get; set; } = string.Empty;
 
     /// <summary>
+	/// Total number of connected edges (in-degree + out-degree).
+	/// </summary>
+	public int Degree { get; set; } = 1;
+
+    /// <summary>
     /// Material/editor icon name (e.g. "category", "code", "schema").
     /// </summary>
     public string Icon { get; set; } = "circle";

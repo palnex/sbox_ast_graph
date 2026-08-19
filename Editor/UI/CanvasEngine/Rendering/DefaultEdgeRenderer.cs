@@ -1,5 +1,33 @@
 #nullable enable
-using System;
+using ArchitectureVisualizer.UI.CanvasEngine.Models;
+using Editor;
+using Sandbox;
+
+namespace ArchitectureVisualizer.UI.CanvasEngine.Rendering;
+
+/// <summary>
+/// High-performance straight-line edge renderer (Obsidian-style).
+/// </summary>
+public sealed class DefaultEdgeRenderer : IEdgeRenderer
+{
+    public void RenderEdge( PaintContext ctx, CanvasEdge edge )
+    {
+        Vector2 p0 = ctx.Transform.WorldToScreen( edge.Source.Center );
+        Vector2 p3 = ctx.Transform.WorldToScreen( edge.Target.Center );
+
+        Color strokeColor = edge.CustomColor ?? (edge.IsHighlighted ? ctx.Theme.HoverColor : ctx.Theme.DefaultEdgeColor);
+        float strokeWidth = edge.IsHighlighted ? 2.5f : 1.0f;
+
+        Paint.Antialiasing = false; // Blazing fast for thousands of lines
+        Paint.ClearBrush();
+        Paint.SetPen( strokeColor, strokeWidth );
+        Paint.DrawLine( p0, p3 );
+    }
+}
+
+
+
+/* using System;
 using ArchitectureVisualizer.UI.CanvasEngine.Models;
 using Editor;
 using Sandbox;
@@ -78,4 +106,4 @@ public sealed class DefaultEdgeRenderer : IEdgeRenderer
         Paint.SetPen( ctx.Theme.TextColor );
         Paint.DrawText( badgeRect, label, TextFlag.Center );
     }
-}
+} */

@@ -15,10 +15,10 @@ namespace ArchitectureVisualizer.UI.Bridge;
 public sealed class GraphFilterOptions
 {
     public string? SearchQuery { get; set; }
-    public bool UserCodeOnly { get; set; } = true;
+    public bool UserCodeOnly { get; set; } = false;
     public bool ComponentsOnly { get; set; } = false;
     public bool RazorOnly { get; set; } = false;
-    public int MaxNodesToLoad { get; set; } = 300;
+    public int MaxNodesToLoad { get; set; } = 30000;
 }
 
 /// <summary>
@@ -70,14 +70,22 @@ public static class GraphCanvasAdapter
             return;
         }
 
-        // 2. Create Canvas Nodes with radial initial positions
-        float radius = MathF.Sqrt( matchingGraphNodes.Count ) * 90f;
-        float angleStep = (MathF.PI * 2f) / matchingGraphNodes.Count;
+        // 2. Create Canvas Nodes using Fermat's Spiral (Phyllotaxis / Golden Angle)
+        const float goldenAngle = 137.507764f * (MathF.PI / 180f);
+        float initialSpacing = 35f;
 
         for ( int i = 0; i < matchingGraphNodes.Count; i++ )
         {
             var gn = matchingGraphNodes[i];
-            float angle = i * angleStep;
+
+            // Compute connection degree
+            int degree = graph.GetOutgoingEdges( gn.Id ).Count + graph.GetIncomingEdges( gn.Id ).Count;
+            degree = Math.Max( 1, degree );
+
+            // Fermat's Spiral: r = c * sqrt(i), theta = i * 137.5 deg
+            float phi = i * goldenAngle;
+            float r = initialSpacing * MathF.Sqrt( i + 1 );
+            Vector2 spiralPos = new( r * MathF.Cos( phi ), r * MathF.Sin( phi ) );
 
             var cNode = new CanvasNode
             {
@@ -86,8 +94,10 @@ public static class GraphCanvasAdapter
                 Subtitle = gn.Namespace,
                 Icon = GetCategoryIcon( gn.Category ),
                 AccentColor = GetCategoryColor( gn.Category ),
-                Position = new Vector2( MathF.Cos( angle ) * radius, MathF.Sin( angle ) * radius ),
-                Size = new Vector2( 200f, 60f ),
+                Position = spiralPos,
+                Size = new Vector2( 20f, 20f ),
+                Degree = degree,
+                Mass = 1.0f + MathF.Sqrt( degree ) * 0.5f,
                 UserData = gn
             };
 
@@ -95,7 +105,7 @@ public static class GraphCanvasAdapter
             canvas.Nodes.Add( cNode );
         }
 
-        // 3. Create Canvas Edges
+        // 3. Create Canvas Edges with Dynamic Spring Lengths
         foreach ( var gn in matchingGraphNodes )
         {
             if ( !addedNodeMap.TryGetValue( gn.Id, out var srcCanvasNode ) )
@@ -107,11 +117,14 @@ public static class GraphCanvasAdapter
                 if ( !addedNodeMap.TryGetValue( edge.TargetId, out var dstCanvasNode ) )
                     continue;
 
+                // Obsidian Link Distance: spacious 200-250px to form distinct planetary wheels
+                float desiredDist = 220f;
+
                 var cEdge = new CanvasEdge( srcCanvasNode, dstCanvasNode )
                 {
                     Label = GetRelationLabel( edge.Kind ),
                     CustomColor = GetRelationColor( edge.Kind ),
-                    DesiredSpringLength = 220f,
+                    DesiredSpringLength = desiredDist,
                     UserData = edge
                 };
 
@@ -119,8 +132,8 @@ public static class GraphCanvasAdapter
             }
         }
 
-        // 4. Wake up physics simulation
-        canvas.Physics.WakeUp();
+        // 4. Reheat physics simulation to full energy
+        canvas.Physics.Reheat( 1.0f );
         canvas.Update();
     }
 

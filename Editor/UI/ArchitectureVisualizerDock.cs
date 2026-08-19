@@ -1,4 +1,3 @@
-#nullable enable
 using System;
 using System.Linq;
 using Editor.Core;
@@ -8,6 +7,7 @@ using ArchitectureVisualizer.UI.Bridge;
 using ArchitectureVisualizer.UI.CanvasEngine.Models;
 using ArchitectureVisualizer.UI.CanvasEngine.Widgets;
 using ArchitectureVisualizer.UI.Components;
+using ArchitectureVisualizer.UI.Floating;
 using Editor;
 using Sandbox;
 
@@ -31,7 +31,11 @@ public sealed class ArchitectureVisualizerDock : Widget
     private readonly CanvasWidget _canvas;
     private readonly NodeInspectorWidget _inspector;
 
-    private readonly GraphFilterOptions _filters = new();
+    private readonly GraphFilterOptions _filters = new()
+    {
+        UserCodeOnly = false, // За замовчуванням показуємо все
+        MaxNodesToLoad = 2000
+    };
 
     public ArchitectureVisualizerDock( Widget parent ) : base( parent )
     {
@@ -47,25 +51,38 @@ public sealed class ArchitectureVisualizerDock : Widget
         toolbar.Layout.Spacing = 8;
 
         _searchBox = toolbar.Layout.Add( new LineEdit( toolbar ) );
-        _searchBox.PlaceholderText = "Search classes, interfaces, namespaces...";
+        _searchBox.PlaceholderText = "Search classes, namespaces...";
         _searchBox.ClearButtonEnabled = true;
-        _searchBox.FixedWidth = 260;
+        _searchBox.FixedWidth = 220;
         _searchBox.TextEdited += OnSearchEdited;
 
         var rebuildBtn = toolbar.Layout.Add( new Button( "Rebuild", "refresh", toolbar ) );
         rebuildBtn.Clicked = OnRebuildClicked;
 
         _userOnlyCheck = toolbar.Layout.Add( new Checkbox( "User Code Only", toolbar ) );
-        _userOnlyCheck.Value = true;
-        _userOnlyCheck.Toggled += () => { _filters.UserCodeOnly = _userOnlyCheck.Value; RefreshVisualizer(); };
+        _userOnlyCheck.Value = false;
+        _userOnlyCheck.StateChanged += _ =>
+        {
+            _filters.UserCodeOnly = _userOnlyCheck.Value;
+            Log.Info( $"[Visualizer] UserCodeOnly filter: {_filters.UserCodeOnly}" );
+            RefreshVisualizer();
+        };
 
         _componentsOnlyCheck = toolbar.Layout.Add( new Checkbox( "Components", toolbar ) );
         _componentsOnlyCheck.Value = false;
-        _componentsOnlyCheck.Toggled += () => { _filters.ComponentsOnly = _componentsOnlyCheck.Value; RefreshVisualizer(); };
+        _componentsOnlyCheck.StateChanged += _ =>
+        {
+            _filters.ComponentsOnly = _componentsOnlyCheck.Value;
+            RefreshVisualizer();
+        };
 
         _razorOnlyCheck = toolbar.Layout.Add( new Checkbox( "Razor UI", toolbar ) );
         _razorOnlyCheck.Value = false;
-        _razorOnlyCheck.Toggled += () => { _filters.RazorOnly = _razorOnlyCheck.Value; RefreshVisualizer(); };
+        _razorOnlyCheck.StateChanged += _ =>
+        {
+            _filters.RazorOnly = _razorOnlyCheck.Value;
+            RefreshVisualizer();
+        };
 
         toolbar.Layout.AddStretchCell();
 
@@ -94,6 +111,8 @@ public sealed class ArchitectureVisualizerDock : Widget
 
         // --- Center Column: 2D Canvas ---
         _canvas = new CanvasWidget( _splitter );
+        // Attach Floating Forces HUD Menu onto Canvas
+        var overlayMenu = new CanvasOverlayMenu( _canvas );
         _canvas.OnNodeSelected += OnCanvasNodeSelected;
         _canvas.OnNodeDoubleClicked += OnCanvasNodeDoubleClicked;
         _splitter.AddWidget( _canvas );
@@ -117,7 +136,7 @@ public sealed class ArchitectureVisualizerDock : Widget
     private void OnRebuildClicked()
     {
         _statusLabel.Text = "Rebuilding graph...";
-        // Triggers phase 1 engine rebuild
+        Log.Info( "[Visualizer] Triggering DependencyGraphEngine.Rebuild()..." );
         DependencyGraphEngine.Rebuild();
         RefreshVisualizer();
     }
@@ -127,9 +146,12 @@ public sealed class ArchitectureVisualizerDock : Widget
         var graph = DependencyGraphEngine.Current;
         if ( graph == null )
         {
-            _statusLabel.Text = "Graph is empty.";
+            _statusLabel.Text = "Graph is null.";
+            Log.Warning( "[Visualizer] DependencyGraphEngine.Current is null!" );
             return;
         }
+
+        Log.Info( $"[Visualizer] Refreshing with total {graph.Nodes.Count} nodes in RAM..." );
 
         // 1. Populate visual 2D Canvas
         GraphCanvasAdapter.PopulateCanvas( _canvas, graph, _filters );
@@ -138,15 +160,24 @@ public sealed class ArchitectureVisualizerDock : Widget
         RebuildSidebarList( graph );
 
         // 3. Update Status
-        _statusLabel.Text = $"{_canvas.Nodes.Count} visible nodes | {_canvas.Edges.Count} connections (Total: {graph.Nodes.Count:N0})";
+        _statusLabel.Text = $"{_canvas.Nodes.Count} visible | {_canvas.Edges.Count} edges (Total: {graph.Nodes.Count:N0})";
+        Log.Info( $"[Visualizer] Canvas populated: {_canvas.Nodes.Count} nodes, {_canvas.Edges.Count} edges." );
+
+        _canvas.Physics.WakeUp();
+        _canvas.Update();
+        Update();
     }
 
     private void RebuildSidebarList( DependencyGraph graph )
     {
         _classListContainer.DestroyChildren();
 
+        // Cap sidebar items to first 60 to prevent Qt widget overload
+        int count = 0;
         foreach ( var canvasNode in _canvas.Nodes )
         {
+            if ( count++ >= 60 ) break;
+
             var btn = _classListContainer.Layout.Add( new Button( canvasNode.Title, canvasNode.Icon, _classListContainer ) );
             btn.Clicked = () =>
             {
