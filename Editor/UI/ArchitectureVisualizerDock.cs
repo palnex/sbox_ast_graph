@@ -1,12 +1,12 @@
+#nullable enable
 using System;
-using System.Linq;
+using System.Collections.Generic;
+using System.IO;
 using Editor.Core;
-using Editor.Core.Analysis;
 using Editor.Core.Models;
 using ArchitectureVisualizer.UI.Bridge;
 using ArchitectureVisualizer.UI.CanvasEngine.Models;
 using ArchitectureVisualizer.UI.CanvasEngine.Widgets;
-using ArchitectureVisualizer.UI.Components;
 using ArchitectureVisualizer.UI.Floating;
 using Editor;
 using Sandbox;
@@ -14,209 +14,188 @@ using Sandbox;
 namespace ArchitectureVisualizer.UI;
 
 /// <summary>
-/// Main dockable window for the Architecture Visualizer & Dependency Graph tool.
+/// Main full-window canvas architecture visualizer dock.
 /// </summary>
 [Dock( "Editor", "Architecture Visualizer", "schema" )]
 public sealed class ArchitectureVisualizerDock : Widget
 {
-    private readonly LineEdit _searchBox;
-    private readonly Checkbox _userOnlyCheck;
-    private readonly Checkbox _componentsOnlyCheck;
-    private readonly Checkbox _razorOnlyCheck;
-    private readonly Label _statusLabel;
+    private static readonly HashSet<ArchitectureVisualizerDock> ActiveInstances = new();
 
-    private readonly Splitter _splitter;
-    private readonly Widget _leftSidebar;
-    private readonly Widget _classListContainer;
-    private readonly CanvasWidget _canvas;
-    private readonly NodeInspectorWidget _inspector;
+    private CanvasWidget? _canvas;
+    private CanvasTopHud? _topHud;
+    private CanvasForcesHud? _forcesHud;
 
     private readonly GraphFilterOptions _filters = new()
     {
-        UserCodeOnly = false, // За замовчуванням показуємо все
-        MaxNodesToLoad = 2000
+        UserCodeOnly = false,
+        IncludeSystemPrimitives = false,
+        MaxNodesToLoad = 30000
     };
+
+    private Vector2 _savedPan = Vector2.Zero;
+    private float _savedZoom = 1.0f;
+    private string? _savedSelectedId;
 
     public ArchitectureVisualizerDock( Widget parent ) : base( parent )
     {
+        ActiveInstances.Add( this );
+
         Layout = Layout.Column();
         Layout.Margin = 0;
         Layout.Spacing = 0;
 
-        // ================= 1. TOP TOOLBAR =================
-        var toolbar = Layout.Add( new Widget( this ) );
-        toolbar.FixedHeight = 42;
-        toolbar.Layout = Layout.Row();
-        toolbar.Layout.Margin = 8;
-        toolbar.Layout.Spacing = 8;
-
-        _searchBox = toolbar.Layout.Add( new LineEdit( toolbar ) );
-        _searchBox.PlaceholderText = "Search classes, namespaces...";
-        _searchBox.ClearButtonEnabled = true;
-        _searchBox.FixedWidth = 220;
-        _searchBox.TextEdited += OnSearchEdited;
-
-        var rebuildBtn = toolbar.Layout.Add( new Button( "Rebuild", "refresh", toolbar ) );
-        rebuildBtn.Clicked = OnRebuildClicked;
-
-        _userOnlyCheck = toolbar.Layout.Add( new Checkbox( "User Code Only", toolbar ) );
-        _userOnlyCheck.Value = false;
-        _userOnlyCheck.StateChanged += _ =>
-        {
-            _filters.UserCodeOnly = _userOnlyCheck.Value;
-            Log.Info( $"[Visualizer] UserCodeOnly filter: {_filters.UserCodeOnly}" );
-            RefreshVisualizer();
-        };
-
-        _componentsOnlyCheck = toolbar.Layout.Add( new Checkbox( "Components", toolbar ) );
-        _componentsOnlyCheck.Value = false;
-        _componentsOnlyCheck.StateChanged += _ =>
-        {
-            _filters.ComponentsOnly = _componentsOnlyCheck.Value;
-            RefreshVisualizer();
-        };
-
-        _razorOnlyCheck = toolbar.Layout.Add( new Checkbox( "Razor UI", toolbar ) );
-        _razorOnlyCheck.Value = false;
-        _razorOnlyCheck.StateChanged += _ =>
-        {
-            _filters.RazorOnly = _razorOnlyCheck.Value;
-            RefreshVisualizer();
-        };
-
-        toolbar.Layout.AddStretchCell();
-
-        _statusLabel = toolbar.Layout.Add( new Label( "Ready", toolbar ) );
-
-        // ================= 2. 3-PANEL SPLITTER =================
-        _splitter = Layout.Add( new Splitter( this ), 1 );
-        _splitter.IsHorizontal = true;
-
-        // --- Left Column: Explorer ---
-        _leftSidebar = new Widget( _splitter );
-        _leftSidebar.Layout = Layout.Column();
-        _leftSidebar.Layout.Margin = 8;
-        _leftSidebar.Layout.Spacing = 6;
-        _leftSidebar.FixedWidth = 240;
-
-        _leftSidebar.Layout.Add( new Label( "EXPLORER", _leftSidebar ) );
-
-        var scrollArea = _leftSidebar.Layout.Add( new ScrollArea( _leftSidebar ), 1 );
-        scrollArea.Canvas = new Widget( scrollArea );
-        scrollArea.Canvas.Layout = Layout.Column();
-        scrollArea.Canvas.Layout.Spacing = 2;
-        _classListContainer = scrollArea.Canvas;
-
-        _splitter.AddWidget( _leftSidebar );
-
-        // --- Center Column: 2D Canvas ---
-        _canvas = new CanvasWidget( _splitter );
-        // Attach Floating Forces HUD Menu onto Canvas
-        var overlayMenu = new CanvasOverlayMenu( _canvas );
-        _canvas.OnNodeSelected += OnCanvasNodeSelected;
-        _canvas.OnNodeDoubleClicked += OnCanvasNodeDoubleClicked;
-        _splitter.AddWidget( _canvas );
-
-        // --- Right Column: Node Inspector ---
-        _inspector = new NodeInspectorWidget( _splitter );
-        _inspector.FixedWidth = 300;
-        _inspector.OnNavigateToNodeRequested += OnInspectorNavigateRequested;
-        _splitter.AddWidget( _inspector );
-
-        // Initial Population
-        RefreshVisualizer();
+        BuildUI();
+        RefreshCanvas( preservePositions: false );
     }
 
-    private void OnSearchEdited( string query )
+    private void BuildUI()
     {
-        _filters.SearchQuery = query;
-        RefreshVisualizer();
-    }
+        // 1. Full Canvas
+        _canvas = Layout.Add( new CanvasWidget( this ), 1 );
+        _canvas.Transform.PanOffset = _savedPan;
+        _canvas.Transform.Zoom = _savedZoom;
 
-    private void OnRebuildClicked()
-    {
-        _statusLabel.Text = "Rebuilding graph...";
-        Log.Info( "[Visualizer] Triggering DependencyGraphEngine.Rebuild()..." );
-        DependencyGraphEngine.Rebuild();
-        RefreshVisualizer();
-    }
-
-    private void RefreshVisualizer()
-    {
-        var graph = DependencyGraphEngine.Current;
-        if ( graph == null )
+        _canvas.OnNodeSelected += idx =>
         {
-            _statusLabel.Text = "Graph is null.";
-            Log.Warning( "[Visualizer] DependencyGraphEngine.Current is null!" );
-            return;
+            _savedSelectedId = (idx >= 0 && idx < _canvas.Registry.Count)
+                ? _canvas.Registry.GetPayload( idx ).Id
+                : null;
+        };
+
+        _canvas.OnNodeDoubleClicked += idx =>
+        {
+            if ( idx < 0 || idx >= _canvas.Registry.Count ) return;
+            var payload = _canvas.Registry.GetPayload( idx );
+            if ( !string.IsNullOrEmpty( payload.FilePath ) )
+            {
+                string path = payload.FilePath;
+                if ( !Path.IsPathRooted( path ) && Project.Current != null )
+                    path = Path.GetFullPath( Path.Combine( Project.Current.RootDirectory.FullName, path ) );
+
+                if ( File.Exists( path ) ) CodeEditor.OpenFile( path, payload.LineNumber );
+            }
+        };
+
+        // 2. Floating Top HUD
+        _topHud = new CanvasTopHud( _canvas );
+        _topHud.FilterUserOnly = _filters.UserCodeOnly;
+        _topHud.IncludeSystemPrimitives = _filters.IncludeSystemPrimitives;
+        _topHud.FilterComponentsOnly = _filters.ComponentsOnly;
+        _topHud.FilterRazorOnly = _filters.RazorOnly;
+
+        _topHud.OnSearchChanged += query =>
+        {
+            _filters.SearchQuery = query;
+            RefreshCanvas( preservePositions: true );
+        };
+
+        _topHud.OnFilterChanged += () =>
+        {
+            _filters.UserCodeOnly = _topHud.FilterUserOnly;
+            _filters.IncludeSystemPrimitives = _topHud.IncludeSystemPrimitives;
+            _filters.ComponentsOnly = _topHud.FilterComponentsOnly;
+            _filters.RazorOnly = _topHud.FilterRazorOnly;
+            RefreshCanvas( preservePositions: true );
+        };
+
+        _topHud.OnRebuildRequested += () =>
+        {
+            DependencyGraphEngine.Rebuild();
+            RefreshCanvas( preservePositions: false );
+        };
+
+        // 3. Floating Forces HUD (Top-Right)
+        _forcesHud = new CanvasForcesHud( _canvas );
+    }
+
+    protected override void OnResize()
+    {
+        base.OnResize();
+
+        if ( _topHud != null )
+        {
+            _topHud.Position = new Vector2( 14, 14 );
+            _topHud.AdjustSize();
         }
 
-        Log.Info( $"[Visualizer] Refreshing with total {graph.Nodes.Count} nodes in RAM..." );
+        if ( _forcesHud != null )
+        {
+            _forcesHud.AdjustSize();
+            _forcesHud.UpdatePosition();
+        }
+    }
 
-        // 1. Populate visual 2D Canvas
+    private void RefreshCanvas( bool preservePositions )
+    {
+        if ( _canvas == null ) return;
+        var graph = DependencyGraphEngine.Current;
+        if ( graph == null ) return;
+
+        Dictionary<string, (Vector2 Pos, bool Pinned)>? savedState = null;
+        if ( preservePositions && _canvas.Registry.Count > 0 )
+        {
+            savedState = new Dictionary<string, (Vector2, bool)>();
+            for ( int i = 0; i < _canvas.Registry.Count; i++ )
+            {
+                var payload = _canvas.Registry.GetPayload( i );
+                ref readonly var spatial = ref _canvas.Registry.GetSpatialRef( i );
+                savedState[payload.Id] = (spatial.Position, spatial.IsPinned);
+            }
+        }
+
         GraphCanvasAdapter.PopulateCanvas( _canvas, graph, _filters );
 
-        // 2. Populate Left Sidebar List
-        RebuildSidebarList( graph );
+        if ( savedState != null )
+        {
+            for ( int i = 0; i < _canvas.Registry.Count; i++ )
+            {
+                var payload = _canvas.Registry.GetPayload( i );
+                if ( savedState.TryGetValue( payload.Id, out var state ) )
+                {
+                    ref var spatial = ref _canvas.Registry.GetSpatialRef( i );
+                    spatial.Position = state.Pos;
+                    spatial.SetFlag( NodeFlags.Pinned, state.Pinned );
+                }
+            }
+            _canvas.Physics.Reheat( 0.20f );
+        }
 
-        // 3. Update Status
-        _statusLabel.Text = $"{_canvas.Nodes.Count} visible | {_canvas.Edges.Count} edges (Total: {graph.Nodes.Count:N0})";
-        Log.Info( $"[Visualizer] Canvas populated: {_canvas.Nodes.Count} nodes, {_canvas.Edges.Count} edges." );
+        _topHud?.UpdateStatus( _canvas.Registry.Count, graph.Nodes.Count, _canvas.Edges.Count );
 
-        _canvas.Physics.WakeUp();
+        if ( !string.IsNullOrEmpty( _savedSelectedId ) )
+        {
+            for ( int i = 0; i < _canvas.Registry.Count; i++ )
+            {
+                if ( _canvas.Registry.GetPayload( i ).Id == _savedSelectedId )
+                {
+                    _canvas.SelectNode( i );
+                    break;
+                }
+            }
+        }
+
         _canvas.Update();
+    }
+
+    [EditorEvent.Hotload]
+    public static void OnGlobalHotload()
+    {
+        ActiveInstances.RemoveWhere( x => !x.IsValid );
+        foreach ( var instance in ActiveInstances ) instance.RebuildOnHotload();
+    }
+
+    private void RebuildOnHotload()
+    {
+        if ( _canvas != null )
+        {
+            _savedPan = _canvas.Transform.PanOffset;
+            _savedZoom = _canvas.Transform.Zoom;
+        }
+
+        Layout.Clear( true );
+        BuildUI();
+        RefreshCanvas( preservePositions: true );
+        OnResize();
         Update();
-    }
-
-    private void RebuildSidebarList( DependencyGraph graph )
-    {
-        _classListContainer.DestroyChildren();
-
-        // Cap sidebar items to first 60 to prevent Qt widget overload
-        int count = 0;
-        foreach ( var canvasNode in _canvas.Nodes )
-        {
-            if ( count++ >= 60 ) break;
-
-            var btn = _classListContainer.Layout.Add( new Button( canvasNode.Title, canvasNode.Icon, _classListContainer ) );
-            btn.Clicked = () =>
-            {
-                _canvas.FocusOnNode( canvasNode );
-                _inspector.InspectNode( canvasNode, graph );
-            };
-        }
-    }
-
-    private void OnCanvasNodeSelected( CanvasNode? node )
-    {
-        var graph = DependencyGraphEngine.Current;
-        _inspector.InspectNode( node, graph );
-    }
-
-    private void OnCanvasNodeDoubleClicked( CanvasNode node )
-    {
-        if ( node.UserData is GraphNode gn && !string.IsNullOrEmpty( gn.FilePath ) )
-        {
-            string fullPath = gn.FilePath;
-            if ( !System.IO.Path.IsPathRooted( fullPath ) && Project.Current != null )
-            {
-                fullPath = System.IO.Path.GetFullPath( System.IO.Path.Combine( Project.Current.RootDirectory.FullName, fullPath ) );
-            }
-
-            if ( System.IO.File.Exists( fullPath ) )
-            {
-                CodeEditor.OpenFile( fullPath, 1 );
-            }
-        }
-    }
-
-    private void OnInspectorNavigateRequested( string targetNodeId )
-    {
-        var targetCanvasNode = _canvas.Nodes.FirstOrDefault( n => n.Id == targetNodeId );
-        if ( targetCanvasNode != null )
-        {
-            _canvas.FocusOnNode( targetCanvasNode );
-            _inspector.InspectNode( targetCanvasNode, DependencyGraphEngine.Current );
-        }
     }
 }

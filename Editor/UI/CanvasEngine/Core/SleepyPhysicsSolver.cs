@@ -1,3 +1,4 @@
+#nullable enable
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -8,12 +9,12 @@ namespace ArchitectureVisualizer.UI.CanvasEngine.Core;
 
 /// <summary>
 /// Ultra-stable Force-Directed physics solver with Soft Velocity Collisions, 
-/// High Viscosity Damping (0.68), and LinLog Subsystem Separation.
+/// High Viscosity Damping, and LinLog Subsystem Separation.
 /// </summary>
 public sealed class SleepyPhysicsSolver
 {
     private readonly BarnesHutQuadTree _quadTree = new();
-    private readonly SpatialHashGrid _collisionGrid = new( cellSize: 60f );
+    private readonly SpatialHashGrid _collisionGrid = new( cellSize: 70f );
 
     public float Alpha { get; private set; } = 1.0f;
     public float AlphaTarget { get; set; } = 0.0f;
@@ -26,155 +27,127 @@ public sealed class SleepyPhysicsSolver
     public float LinkForceSetting { get; set; } = 0.85f;
     public float CenterForceSetting { get; set; } = 0.35f;
 
-    /// <summary>
-    /// Viscous fluid damping (0.68 = dense syrup that kills all oscillations and jitter).
-    /// </summary>
     public float Damping { get; set; } = 0.68f;
-
     public float TerminalVelocity { get; set; } = 14f;
-    public float BaseCollisionRadius { get; set; } = 12f;
+    public float BaseCollisionRadius { get; set; } = 14f;
 
+    public bool PauseDuringPlay { get; set; } = true;
     public bool IsSleeping => Alpha < AlphaMin;
 
-    public void Reheat( float energy = 1.0f )
-    {
-        Alpha = Math.Max( Alpha, energy );
-    }
-
+    public void Reheat( float energy = 1.0f ) => Alpha = Math.Max( Alpha, energy );
     public void WakeUp() => Reheat( 1.0f );
 
-    /// <summary>
-    /// Advances the physics simulation by one time-step.
-    /// </summary>
-    public void Step( IReadOnlyList<CanvasNode> nodes, IReadOnlyList<CanvasEdge> edges, float dt = 0.016f )
+    public void Step( SpatialRegistry registry, IReadOnlyList<CanvasEdge> edges, float dt = 0.016f )
     {
-        int nodeCount = nodes.Count;
+        int nodeCount = registry.Count;
         if ( nodeCount == 0 || IsSleeping ) return;
+
+        if ( PauseDuringPlay && Game.IsPlaying ) return;
 
         // 1. Cool down Alpha
         Alpha += (AlphaTarget - Alpha) * AlphaDecay;
-
         if ( Alpha < AlphaMin )
         {
-            // Hard freeze velocities on sleep to guarantee rock-solid stillness
-            for ( int i = 0; i < nodeCount; i++ ) nodes[i].Velocity = Vector2.Zero;
+            var spatials = registry.GetSpatialSpan();
+            for ( int i = 0; i < nodeCount; i++ ) spatials[i].Velocity = Vector2.Zero;
             return;
         }
 
-        // 2. Build Barnes-Hut QuadTree for Repulsion
-        _quadTree.Build( nodes );
+        // 2. Build Barnes-Hut QuadTree
+        _quadTree.Build( registry );
 
-        // 3. Compute Many-Body Repulsion (Barnes-Hut)
+        // 3. Compute Many-Body Repulsion in Parallel
         Parallel.For( 0, nodeCount, i =>
         {
-            var node = nodes[i];
-            if ( node.IsPinned || node.IsDragging )
-            {
-                node.AccumulatedForce = Vector2.Zero;
-                return;
-            }
+            ref var node = ref registry.GetSpatialRef( i );
+            if ( node.IsPinned || node.IsHidden ) return;
 
-            Vector2 pos = node.Center;
-            Vector2 repulsion = _quadTree.ComputeRepulsion( i, pos, RepulsionConstant, maxDist: RepulsionMaxDist );
-            node.AccumulatedForce = repulsion * Alpha;
+            Vector2 repulsion = _quadTree.ComputeRepulsion( i, node.Position, RepulsionConstant, maxDist: RepulsionMaxDist );
+            float mass = MathF.Max( 0.5f, registry.GetPayload( i ).PhysicsMass );
+            node.Velocity += (repulsion * Alpha / mass) * dt;
         } );
 
-        // 4. Integrate Acceleration from Repulsion into Velocity
-        for ( int i = 0; i < nodeCount; i++ )
-        {
-            var node = nodes[i];
-            if ( node.IsPinned || node.IsDragging )
-            {
-                node.Velocity = Vector2.Zero;
-                continue;
-            }
-
-            Vector2 acceleration = node.AccumulatedForce / MathF.Max( 0.5f, node.Mass );
-            node.Velocity += acceleration * dt;
-        }
-
-        // 5. LinLog Link Constraints (Soft Logarithmic Attraction to preserve distinct continents)
+        // 4. LinLog Link Constraints (Soft Logarithmic Attraction)
         int edgeCount = edges.Count;
         for ( int i = 0; i < edgeCount; i++ )
         {
             var edge = edges[i];
-            var src = edge.Source;
-            var dst = edge.Target;
+            ref var src = ref registry.GetSpatialRef( edge.SourceIndex );
+            ref var dst = ref registry.GetSpatialRef( edge.TargetIndex );
 
-            Vector2 delta = dst.Center - src.Center;
+            if ( src.IsHidden || dst.IsHidden ) continue;
+
+            Vector2 delta = dst.Position - src.Position;
             float dist = delta.Length;
             if ( dist < 0.001f ) continue;
 
-            // Degree-normalized strength
-            float minDeg = MathF.Min( src.Degree, dst.Degree );
+            var srcPayload = registry.GetPayload( edge.SourceIndex );
+            var dstPayload = registry.GetPayload( edge.TargetIndex );
+
+            float minDeg = MathF.Min( srcPayload.TotalDegree, dstPayload.TotalDegree );
             float strength = (LinkForceSetting / MathF.Max( 1f, minDeg )) * Alpha;
 
-            // Soft Logarithmic spring (ForceAtlas2 LinLog model)
-            float displacementMag = MathF.Sign( dist - LinkDistanceSetting ) * MathF.Log( 1f + MathF.Abs( dist - LinkDistanceSetting ) * 0.05f ) * 12f * strength;
+            float targetDistance = edge.DesiredSpringLength > 0 ? edge.DesiredSpringLength : LinkDistanceSetting;
+            float displacementMag = MathF.Sign( dist - targetDistance ) * MathF.Log( 1f + MathF.Abs( dist - targetDistance ) * 0.05f ) * 12f * strength;
             Vector2 displacement = (delta / dist) * displacementMag;
 
-            float totalDeg = (float)(src.Degree + dst.Degree);
-            float srcBias = dst.Degree / totalDeg;
-            float dstBias = src.Degree / totalDeg;
+            float totalDeg = (float)(srcPayload.TotalDegree + dstPayload.TotalDegree);
+            float srcBias = dstPayload.TotalDegree / totalDeg;
+            float dstBias = srcPayload.TotalDegree / totalDeg;
 
-            if ( !src.IsPinned && !src.IsDragging )
-                src.Velocity += displacement * srcBias;
-
-            if ( !dst.IsPinned && !dst.IsDragging )
-                dst.Velocity -= displacement * dstBias;
+            if ( !src.IsPinned ) src.Velocity += displacement * srcBias;
+            if ( !dst.IsPinned ) dst.Velocity -= displacement * dstBias;
         }
 
-        // 6. Soft Velocity Collision Pass (D3-style, NO coordinate teleportation)
-        ApplySoftCollisions( nodes );
+        // 5. Soft Velocity Collisions (Breaks artificial circular rings into organic clouds)
+        ApplySoftCollisions( registry );
 
-        // 7. Apply Center Force, Viscous Damping & Position Update
+        // 6. Center Gravity, Viscous Damping & Position Update
+        var finalSpatials = registry.GetSpatialSpan();
         float maxSpeedSq = TerminalVelocity * TerminalVelocity;
 
         for ( int i = 0; i < nodeCount; i++ )
         {
-            var node = nodes[i];
-            if ( node.IsPinned || node.IsDragging )
+            ref var node = ref finalSpatials[i];
+            if ( node.IsPinned || node.IsHidden )
             {
                 node.Velocity = Vector2.Zero;
                 continue;
             }
 
-            // Soft Center Gravity on velocity
             Vector2 centerPull = -node.Position * (CenterForceSetting * 0.002f) * Alpha;
             node.Velocity = (node.Velocity + centerPull) * Damping;
 
-            // Terminal Velocity Clamp
-            float speedSq = node.Velocity.LengthSquared;
-            if ( speedSq > maxSpeedSq )
-            {
+            if ( node.Velocity.LengthSquared > maxSpeedSq )
                 node.Velocity = node.Velocity.Normal * TerminalVelocity;
-            }
 
-            // Position update
             node.Position += node.Velocity;
         }
     }
 
-    private void ApplySoftCollisions( IReadOnlyList<CanvasNode> nodes )
+    private void ApplySoftCollisions( SpatialRegistry registry )
     {
-        _collisionGrid.Build( nodes );
-        int count = nodes.Count;
+        _collisionGrid.Build( registry );
+        int count = registry.Count;
 
         for ( int i = 0; i < count; i++ )
         {
-            var a = nodes[i];
-            Vector2 posA = a.Center;
-            float radiusA = BaseCollisionRadius + MathF.Sqrt( a.Degree ) * 1.0f;
+            ref readonly var a = ref registry.GetSpatialRef( i );
+            if ( a.IsHidden ) continue;
+
+            Vector2 posA = a.Position;
+            float radiusA = a.Radius;
+            bool isPinnedA = a.IsPinned;
 
             _collisionGrid.QueryNeighbors( posA, neighborIdx =>
             {
                 if ( i >= neighborIdx ) return;
 
-                var b = nodes[neighborIdx];
-                float radiusB = BaseCollisionRadius + MathF.Sqrt( b.Degree ) * 1.0f;
-                float targetDist = radiusA + radiusB;
+                ref var b = ref registry.GetSpatialRef( neighborIdx );
+                if ( b.IsHidden ) return;
 
-                Vector2 delta = b.Center - posA;
+                float targetDist = radiusA + b.Radius + 4f;
+                Vector2 delta = b.Position - posA;
                 float distSq = delta.LengthSquared;
 
                 if ( distSq < (targetDist * targetDist) && distSq > 0.001f )
@@ -182,11 +155,10 @@ public sealed class SleepyPhysicsSolver
                     float dist = MathF.Sqrt( distSq );
                     float overlap = (targetDist - dist);
 
-                    // Soft velocity impulse scaled by alpha (NO jittering!)
-                    Vector2 pushImpulse = (delta / dist) * (overlap * 0.35f * Alpha);
+                    Vector2 pushImpulse = (delta / dist) * (overlap * 0.40f * Alpha);
 
-                    if ( !a.IsPinned && !a.IsDragging ) a.Velocity -= pushImpulse * 0.5f;
-                    if ( !b.IsPinned && !b.IsDragging ) b.Velocity += pushImpulse * 0.5f;
+                    if ( !isPinnedA ) registry.GetSpatialRef( i ).Velocity -= pushImpulse * 0.5f;
+                    if ( !b.IsPinned ) b.Velocity += pushImpulse * 0.5f;
                 }
             } );
         }

@@ -1,13 +1,13 @@
+#nullable enable
 using System;
-using System.Collections.Generic;
 using ArchitectureVisualizer.UI.CanvasEngine.Models;
 using Sandbox;
 
 namespace ArchitectureVisualizer.UI.CanvasEngine.Core;
 
 /// <summary>
-/// High-performance 2D QuadTree implementing the Barnes-Hut approximation for N-body force calculations.
-/// Uses pre-allocated flat arrays to guarantee zero GC allocations per tick.
+/// High-performance 2D QuadTree implementing Barnes-Hut approximation over flat SpatialRegistry arrays.
+/// Zero GC allocations per tick.
 /// </summary>
 public sealed class BarnesHutQuadTree
 {
@@ -16,7 +16,7 @@ public sealed class BarnesHutQuadTree
         public Rect Bounds;
         public Vector2 CenterOfMass;
         public float TotalMass;
-        public int NodeIndex; // -1 if empty, >= 0 if leaf node, -2 if internal branch
+        public int NodeIndex; // -1 = empty, >= 0 = leaf, -2 = branch
         public int ChildNW;
         public int ChildNE;
         public int ChildSW;
@@ -29,23 +29,19 @@ public sealed class BarnesHutQuadTree
 
     private QuadCell[] _cells;
     private int _cellCount;
-    private IReadOnlyList<CanvasNode>? _activeNodes;
 
     public BarnesHutQuadTree( int initialCapacity = 4096 )
     {
         _cells = new QuadCell[initialCapacity];
     }
 
-    /// <summary>
-    /// Builds the QuadTree covering the bounding box of all active nodes.
-    /// </summary>
-    public void Build( IReadOnlyList<CanvasNode> nodes )
+    public void Build( SpatialRegistry registry )
     {
-        _activeNodes = nodes;
         _cellCount = 0;
-
-        int count = nodes.Count;
+        int count = registry.Count;
         if ( count == 0 ) return;
+
+        var spatials = registry.GetReadOnlySpatialSpan();
 
         // 1. Calculate World Enclosing Bounds
         float minX = float.MaxValue, minY = float.MaxValue;
@@ -53,29 +49,34 @@ public sealed class BarnesHutQuadTree
 
         for ( int i = 0; i < count; i++ )
         {
-            Vector2 p = nodes[i].Center;
+            ref readonly var node = ref spatials[i];
+            if ( node.IsHidden ) continue;
+
+            Vector2 p = node.Position;
             if ( p.x < minX ) minX = p.x;
             if ( p.x > maxX ) maxX = p.x;
             if ( p.y < minY ) minY = p.y;
             if ( p.y > maxY ) maxY = p.y;
         }
 
-        float size = MathF.Max( maxX - minX, maxY - minY ) + 40f;
+        float size = MathF.Max( maxX - minX, maxY - minY ) + 60f;
         float halfSize = size * 0.5f;
         Vector2 center = new( (minX + maxX) * 0.5f, (minY + maxY) * 0.5f );
 
         Rect rootBounds = new( center.x - halfSize, center.y - halfSize, size, size );
-
-        // 2. Allocate Root Cell
         int rootIdx = AllocateCell( rootBounds );
 
-        // 3. Insert all nodes
+        // 2. Insert all active nodes
         for ( int i = 0; i < count; i++ )
         {
-            InsertNode( rootIdx, i, nodes[i].Center, nodes[i].Mass );
+            ref readonly var node = ref spatials[i];
+            if ( node.IsHidden ) continue;
+
+            float mass = registry.GetPayload( i ).PhysicsMass;
+            InsertNode( registry, rootIdx, i, node.Position, mass );
         }
 
-        // 4. Compute Centers of Mass recursively
+        // 3. Compute Centers of Mass
         ComputeMassDistribution( rootIdx );
     }
 
@@ -101,7 +102,7 @@ public sealed class BarnesHutQuadTree
         return idx;
     }
 
-    private void InsertNode( int cellIdx, int nodeIdx, Vector2 pos, float mass )
+    private void InsertNode( SpatialRegistry registry, int cellIdx, int nodeIdx, Vector2 pos, float mass )
     {
         ref var cell = ref _cells[cellIdx];
 
@@ -115,22 +116,21 @@ public sealed class BarnesHutQuadTree
 
         if ( cell.IsLeaf )
         {
-            int existingNodeIdx = cell.NodeIndex;
-            Vector2 existingPos = _activeNodes![existingNodeIdx].Center;
-            float existingMass = _activeNodes[existingNodeIdx].Mass;
+            int existingIdx = cell.NodeIndex;
+            Vector2 existingPos = registry.GetSpatialRef( existingIdx ).Position;
+            float existingMass = registry.GetPayload( existingIdx ).PhysicsMass;
 
             cell.NodeIndex = -2; // Convert to branch
             Subdivide( cellIdx );
 
-            // Re-insert existing node and new node into children
-            InsertIntoChildren( cellIdx, existingNodeIdx, existingPos, existingMass );
-            InsertIntoChildren( cellIdx, nodeIdx, pos, mass );
+            InsertIntoChildren( registry, cellIdx, existingIdx, existingPos, existingMass );
+            InsertIntoChildren( registry, cellIdx, nodeIdx, pos, mass );
             return;
         }
 
         if ( cell.IsBranch )
         {
-            InsertIntoChildren( cellIdx, nodeIdx, pos, mass );
+            InsertIntoChildren( registry, cellIdx, nodeIdx, pos, mass );
         }
     }
 
@@ -146,7 +146,7 @@ public sealed class BarnesHutQuadTree
         _cells[cellIdx].ChildSE = AllocateCell( new Rect( b.Left + halfW, b.Top + halfH, halfW, halfH ) );
     }
 
-    private void InsertIntoChildren( int cellIdx, int nodeIdx, Vector2 pos, float mass )
+    private void InsertIntoChildren( SpatialRegistry registry, int cellIdx, int nodeIdx, Vector2 pos, float mass )
     {
         ref var cell = ref _cells[cellIdx];
         Vector2 mid = cell.Bounds.Center;
@@ -155,7 +155,7 @@ public sealed class BarnesHutQuadTree
             ? (pos.x < mid.x ? cell.ChildNW : cell.ChildNE)
             : (pos.x < mid.x ? cell.ChildSW : cell.ChildSE);
 
-        InsertNode( targetChild, nodeIdx, pos, mass );
+        InsertNode( registry, targetChild, nodeIdx, pos, mass );
     }
 
     private void ComputeMassDistribution( int cellIdx )
@@ -196,15 +196,12 @@ public sealed class BarnesHutQuadTree
         }
     }
 
-    /// <summary>
-	/// Computes the Barnes-Hut repulsion force with DistanceMax cutoff (Obsidian/D3 style).
-	/// </summary>
-	public Vector2 ComputeRepulsion( int targetNodeIdx, Vector2 targetPos, float kRepulse, float theta = 0.85f, float maxDist = 450f )
+    public Vector2 ComputeRepulsion( int targetNodeIdx, Vector2 targetPos, float kRepulse, float theta = 0.85f, float maxDist = 550f )
     {
         if ( _cellCount == 0 ) return Vector2.Zero;
-        Vector2 accumulatedForce = Vector2.Zero;
-        TraverseCell( 0, targetNodeIdx, targetPos, kRepulse, theta * theta, maxDist * maxDist, ref accumulatedForce );
-        return accumulatedForce;
+        Vector2 accumForce = Vector2.Zero;
+        TraverseCell( 0, targetNodeIdx, targetPos, kRepulse, theta * theta, maxDist * maxDist, ref accumForce );
+        return accumForce;
     }
 
     private void TraverseCell( int cellIdx, int targetNodeIdx, Vector2 targetPos, float kRepulse, float thetaSq, float maxDistSq, ref Vector2 accumForce )
@@ -216,10 +213,8 @@ public sealed class BarnesHutQuadTree
         Vector2 delta = targetPos - cell.CenterOfMass;
         float distSq = delta.LengthSquared;
 
-        // DistanceMax Cutoff: Ignore clusters that are too far away
         if ( distSq > maxDistSq ) return;
-
-        distSq += 25.0f; // Softening radius
+        distSq += 25.0f; // Softening factor
 
         if ( cell.IsLeaf )
         {
@@ -232,18 +227,15 @@ public sealed class BarnesHutQuadTree
             return;
         }
 
-        // Barnes-Hut Criterion: (s / d)^2 < theta^2
         float sizeSq = cell.Bounds.Width * cell.Bounds.Width;
         if ( (sizeSq / distSq) < thetaSq )
         {
-            // Treat entire cluster as single mass
             float invDist = 1.0f / MathF.Sqrt( distSq );
             float forceMag = (kRepulse * cell.TotalMass) / distSq;
             accumForce += delta * invDist * forceMag;
         }
         else
         {
-            // Recurse into 4 quadrants
             TraverseCell( cell.ChildNW, targetNodeIdx, targetPos, kRepulse, thetaSq, maxDistSq, ref accumForce );
             TraverseCell( cell.ChildNE, targetNodeIdx, targetPos, kRepulse, thetaSq, maxDistSq, ref accumForce );
             TraverseCell( cell.ChildSW, targetNodeIdx, targetPos, kRepulse, thetaSq, maxDistSq, ref accumForce );

@@ -1,12 +1,12 @@
+#nullable enable
 using System;
-using System.Collections.Generic;
 using Sandbox;
 
 namespace ArchitectureVisualizer.UI.CanvasEngine.Core;
 
 /// <summary>
-/// High-performance flat spatial hash grid for O(1) neighbor queries and collision culling.
-/// Zero per-frame allocations via reusable integer index arrays.
+/// Flat spatial hash grid for O(1) neighbor queries over SpatialRegistry.
+/// Zero per-frame memory allocations.
 /// </summary>
 public sealed class SpatialHashGrid
 {
@@ -19,7 +19,7 @@ public sealed class SpatialHashGrid
     private int[] _cellHead;
     private int[] _nodeNext;
 
-    public SpatialHashGrid( float cellSize = 150f, int gridCols = 128, int gridRows = 128, int initialCapacity = 2048 )
+    public SpatialHashGrid( float cellSize = 120f, int gridCols = 128, int gridRows = 128, int initialCapacity = 4096 )
     {
         _cellSize = cellSize;
         _invCellSize = 1.0f / cellSize;
@@ -32,11 +32,11 @@ public sealed class SpatialHashGrid
     }
 
     /// <summary>
-    /// Rebuilds the spatial index for the given list of nodes.
+    /// Rebuilds spatial grid index from SpatialRegistry.
     /// </summary>
-    public void Build( IReadOnlyList<Models.CanvasNode> nodes )
+    public void Build( SpatialRegistry registry )
     {
-        int count = nodes.Count;
+        int count = registry.Count;
 
         if ( _nodeNext.Length < count )
         {
@@ -47,10 +47,13 @@ public sealed class SpatialHashGrid
 
         int halfCols = _gridCols / 2;
         int halfRows = _gridRows / 2;
+        var spatials = registry.GetReadOnlySpatialSpan();
 
         for ( int i = 0; i < count; i++ )
         {
-            Vector2 pos = nodes[i].Center;
+            if ( spatials[i].IsHidden ) continue;
+
+            Vector2 pos = spatials[i].Position;
 
             int cx = (int)MathF.Floor( pos.x * _invCellSize ) + halfCols;
             int cy = (int)MathF.Floor( pos.y * _invCellSize ) + halfRows;
@@ -65,9 +68,6 @@ public sealed class SpatialHashGrid
         }
     }
 
-    /// <summary>
-    /// Queries all node indices located within a 3x3 cell neighborhood around the specified world position.
-    /// </summary>
     public void QueryNeighbors( Vector2 worldPos, Action<int> onNeighborFound )
     {
         int halfCols = _gridCols / 2;

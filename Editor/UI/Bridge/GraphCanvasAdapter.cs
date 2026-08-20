@@ -9,38 +9,32 @@ using Sandbox;
 
 namespace ArchitectureVisualizer.UI.Bridge;
 
-/// <summary>
-/// Options for filtering which nodes and edges are populated onto the visual canvas.
-/// </summary>
 public sealed class GraphFilterOptions
 {
     public string? SearchQuery { get; set; }
     public bool UserCodeOnly { get; set; } = false;
+    public bool IncludeSystemPrimitives { get; set; } = false;
     public bool ComponentsOnly { get; set; } = false;
     public bool RazorOnly { get; set; } = false;
     public int MaxNodesToLoad { get; set; } = 30000;
 }
 
-/// <summary>
-/// Adapts Phase 1 DependencyGraph data into visual CanvasEngine nodes and edges.
-/// </summary>
 public static class GraphCanvasAdapter
 {
-    /// <summary>
-    /// Populates a CanvasWidget with filtered nodes and edges from the DependencyGraph.
-    /// </summary>
     public static void PopulateCanvas( CanvasWidget canvas, DependencyGraph graph, GraphFilterOptions? options = null )
     {
         options ??= new GraphFilterOptions();
-
         canvas.Clear();
 
-        var matchingGraphNodes = new List<GraphNode>();
-        var addedNodeMap = new Dictionary<string, CanvasNode>();
+        var matchingNodes = new List<GraphNode>();
+        var idToIndexMap = new Dictionary<string, int>();
 
         // 1. Filter Nodes
         foreach ( var node in graph.Nodes.Values )
         {
+            if ( !options.IncludeSystemPrimitives && node.Origin == NodeOrigin.SystemPrimitive )
+                continue;
+
             if ( options.UserCodeOnly && node.Origin != NodeOrigin.UserProject )
                 continue;
 
@@ -52,79 +46,81 @@ public static class GraphCanvasAdapter
 
             if ( !string.IsNullOrWhiteSpace( options.SearchQuery ) )
             {
-                bool matchName = node.Name.Contains( options.SearchQuery, StringComparison.OrdinalIgnoreCase );
-                bool matchNs = node.Namespace.Contains( options.SearchQuery, StringComparison.OrdinalIgnoreCase );
-                if ( !matchName && !matchNs )
-                    continue;
+                bool match = node.Name.Contains( options.SearchQuery, StringComparison.OrdinalIgnoreCase ) ||
+                             node.Namespace.Contains( options.SearchQuery, StringComparison.OrdinalIgnoreCase );
+                if ( !match ) continue;
             }
 
-            matchingGraphNodes.Add( node );
-
-            if ( matchingGraphNodes.Count >= options.MaxNodesToLoad )
-                break;
+            matchingNodes.Add( node );
+            if ( matchingNodes.Count >= options.MaxNodesToLoad ) break;
         }
 
-        if ( matchingGraphNodes.Count == 0 )
+        if ( matchingNodes.Count == 0 )
         {
             canvas.Update();
             return;
         }
 
-        // 2. Create Canvas Nodes using Fermat's Spiral (Phyllotaxis / Golden Angle)
+        // 2. Fermat's Spiral Spatial Allocation
         const float goldenAngle = 137.507764f * (MathF.PI / 180f);
-        float initialSpacing = 35f;
+        float spacing = 35f;
 
-        for ( int i = 0; i < matchingGraphNodes.Count; i++ )
+        for ( int i = 0; i < matchingNodes.Count; i++ )
         {
-            var gn = matchingGraphNodes[i];
+            var gn = matchingNodes[i];
+            int degree = Math.Max( 1, graph.GetOutgoingEdges( gn.Id ).Count + graph.GetIncomingEdges( gn.Id ).Count );
 
-            // Compute connection degree
-            int degree = graph.GetOutgoingEdges( gn.Id ).Count + graph.GetIncomingEdges( gn.Id ).Count;
-            degree = Math.Max( 1, degree );
-
-            // Fermat's Spiral: r = c * sqrt(i), theta = i * 137.5 deg
             float phi = i * goldenAngle;
-            float r = initialSpacing * MathF.Sqrt( i + 1 );
+            float r = spacing * MathF.Sqrt( i + 1 );
             Vector2 spiralPos = new( r * MathF.Cos( phi ), r * MathF.Sin( phi ) );
 
-            var cNode = new CanvasNode
+            ushort zLevel = (ushort)Math.Clamp( (int)MathF.Log2( degree + 1 ), 0, 16 );
+            float radius = 6.0f + MathF.Sqrt( degree ) * 1.5f;
+
+            NodeSpatialData spatial = new()
+            {
+                Position = spiralPos,
+                Velocity = Vector2.Zero,
+                Radius = radius,
+                ZLevel = zLevel,
+                Shape = NodeShape.Circle,
+                Flags = NodeFlags.None
+            };
+
+            NodePayload payload = new()
             {
                 Id = gn.Id,
                 Title = gn.Name,
                 Subtitle = gn.Namespace,
-                Icon = GetCategoryIcon( gn.Category ),
+                Summary = gn.Summary,
+                FilePath = gn.FilePath,
+                LineNumber = 1,
                 AccentColor = GetCategoryColor( gn.Category ),
-                Position = spiralPos,
-                Size = new Vector2( 20f, 20f ),
-                Degree = degree,
-                Mass = 1.0f + MathF.Sqrt( degree ) * 0.5f,
+                Icon = GetCategoryIcon( gn.Category ),
+                TotalDegree = degree,
+                PhysicsMass = 1.0f + (degree * 0.25f),
                 UserData = gn
             };
 
-            addedNodeMap[gn.Id] = cNode;
-            canvas.Nodes.Add( cNode );
+            int idx = canvas.Registry.Allocate( in spatial, payload );
+            idToIndexMap[gn.Id] = idx;
         }
 
-        // 3. Create Canvas Edges with Dynamic Spring Lengths
-        foreach ( var gn in matchingGraphNodes )
+        // 3. Allocate Edges
+        foreach ( var gn in matchingNodes )
         {
-            if ( !addedNodeMap.TryGetValue( gn.Id, out var srcCanvasNode ) )
-                continue;
+            if ( !idToIndexMap.TryGetValue( gn.Id, out int srcIdx ) ) continue;
 
-            var outgoingEdges = graph.GetOutgoingEdges( gn.Id );
-            foreach ( var edge in outgoingEdges )
+            var outgoing = graph.GetOutgoingEdges( gn.Id );
+            foreach ( var edge in outgoing )
             {
-                if ( !addedNodeMap.TryGetValue( edge.TargetId, out var dstCanvasNode ) )
-                    continue;
+                if ( !idToIndexMap.TryGetValue( edge.TargetId, out int dstIdx ) ) continue;
 
-                // Obsidian Link Distance: spacious 200-250px to form distinct planetary wheels
-                float desiredDist = 220f;
-
-                var cEdge = new CanvasEdge( srcCanvasNode, dstCanvasNode )
+                var cEdge = new CanvasEdge( srcIdx, dstIdx )
                 {
                     Label = GetRelationLabel( edge.Kind ),
                     CustomColor = GetRelationColor( edge.Kind ),
-                    DesiredSpringLength = desiredDist,
+                    DesiredSpringLength = 220f,
                     UserData = edge
                 };
 
@@ -132,14 +128,10 @@ public static class GraphCanvasAdapter
             }
         }
 
-        // 4. Reheat physics simulation to full energy
         canvas.Physics.Reheat( 1.0f );
         canvas.Update();
     }
 
-    /// <summary>
-    /// Returns the Material icon representing a given type category.
-    /// </summary>
     public static string GetCategoryIcon( SandboxTypeCategory category ) => category switch
     {
         SandboxTypeCategory.SceneComponent => "view_in_ar",
@@ -151,23 +143,17 @@ public static class GraphCanvasAdapter
         _ => "code"
     };
 
-    /// <summary>
-    /// Returns the theme accent color for a given type category.
-    /// </summary>
     public static Color GetCategoryColor( SandboxTypeCategory category ) => category switch
     {
-        SandboxTypeCategory.SceneComponent => new Color( 0.18f, 0.80f, 0.44f ), // Vibrant Green
-        SandboxTypeCategory.UiPanel or SandboxTypeCategory.UiPanelComponent => new Color( 0.20f, 0.60f, 1.0f ), // Sky Blue
-        SandboxTypeCategory.GameResource => new Color( 0.95f, 0.77f, 0.06f ), // Amber Yellow
-        SandboxTypeCategory.Interface => new Color( 0.61f, 0.35f, 0.71f ), // Purple
-        SandboxTypeCategory.Struct => new Color( 0.90f, 0.49f, 0.13f ), // Orange
-        SandboxTypeCategory.Enum => new Color( 0.10f, 0.74f, 0.61f ), // Teal
-        _ => new Color( 0.55f, 0.60f, 0.70f ) // Muted Slate
+        SandboxTypeCategory.SceneComponent => new Color( 0.18f, 0.80f, 0.44f ),
+        SandboxTypeCategory.UiPanel or SandboxTypeCategory.UiPanelComponent => new Color( 0.20f, 0.60f, 1.0f ),
+        SandboxTypeCategory.GameResource => new Color( 0.95f, 0.77f, 0.06f ),
+        SandboxTypeCategory.Interface => new Color( 0.61f, 0.35f, 0.71f ),
+        SandboxTypeCategory.Struct => new Color( 0.90f, 0.49f, 0.13f ),
+        SandboxTypeCategory.Enum => new Color( 0.10f, 0.74f, 0.61f ),
+        _ => new Color( 0.55f, 0.60f, 0.70f )
     };
 
-    /// <summary>
-    /// Returns the display text badge for a relationship kind.
-    /// </summary>
     public static string? GetRelationLabel( RelationKind kind ) => kind switch
     {
         RelationKind.Inherits => "inherits",
@@ -178,15 +164,12 @@ public static class GraphCanvasAdapter
         _ => null
     };
 
-    /// <summary>
-    /// Returns the visual stroke color for a relationship kind.
-    /// </summary>
     public static Color GetRelationColor( RelationKind kind ) => kind switch
     {
-        RelationKind.Inherits or RelationKind.Implements => new Color( 0.91f, 0.30f, 0.24f, 0.8f ), // Coral Red
-        RelationKind.RazorMarkupTag => new Color( 1.0f, 0.62f, 0.26f, 0.8f ), // Orange
-        RelationKind.EventSubscription => new Color( 0.68f, 0.38f, 0.95f, 0.8f ), // Neon Purple
-        RelationKind.Instantiates => new Color( 0.18f, 0.80f, 0.44f, 0.7f ), // Green
-        _ => new Color( 0.35f, 0.42f, 0.55f, 0.45f ) // Subtle Gray-Blue
+        RelationKind.Inherits or RelationKind.Implements => new Color( 0.91f, 0.30f, 0.24f, 0.8f ),
+        RelationKind.RazorMarkupTag => new Color( 1.0f, 0.62f, 0.26f, 0.8f ),
+        RelationKind.EventSubscription => new Color( 0.68f, 0.38f, 0.95f, 0.8f ),
+        RelationKind.Instantiates => new Color( 0.18f, 0.80f, 0.44f, 0.7f ),
+        _ => new Color( 0.35f, 0.42f, 0.55f, 0.45f )
     };
 }
