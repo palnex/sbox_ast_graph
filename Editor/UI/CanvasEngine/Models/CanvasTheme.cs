@@ -88,4 +88,24 @@ public sealed class CanvasTheme
     /// Returns the default dark theme.
     /// </summary>
     public static CanvasTheme DefaultDark => new();
+
+    /// <summary>
+    /// Global scale factor for all node radii and their hitboxes (Default = 1.0).
+    /// </summary>
+    public float NodeSizeScale { get; set; } = 1.0f;
+
+    /// <summary>
+    /// Global multiplier for link/edge stroke thickness (Default = 1.0).
+    /// </summary>
+    public float LinkThicknessScale { get; set; } = 1.0f;
+
+    /// <summary>
+    /// Minimum zoom threshold at which node title text starts fading in (Default = 0.70).
+    /// </summary>
+    public float TextFadeThreshold { get; set; } = 0.70f;
+
+    /// <summary>
+    /// Whether to render directional arrowheads along edges.
+    /// </summary>
+    public bool ShowEdgeArrows { get; set; } = false;
 }

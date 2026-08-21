@@ -39,14 +39,17 @@ public class CanvasWidget : Widget
     // Focus / Neighbors Cache
     private readonly HashSet<int> _focusedNeighbors = new();
 
-    // Interaction State
+    // Interaction & Drag State
     private bool _isPanning;
     private Vector2 _panStartMouse;
     private Vector2 _panStartOffset;
+
     private int _draggedNodeIndex = -1;
     private Vector2 _dragOffset;
     private Vector2 _dragStartMouse;
-    private bool _hasStartedDragThreshold;
+    private Vector2 _currentMouseWorldPos;
+    private bool _isDraggingNode;
+    private bool _dragNodeWasPinnedOriginally;
 
     // World-Anchored Floating Inspector Card
     private readonly FloatingInspectorOverlay _inspectorOverlay;
@@ -149,13 +152,23 @@ public class CanvasWidget : Widget
     [EditorEvent.Frame]
     public void FrameTick()
     {
+        // 1. If currently dragging a node, continuously lock its position to the mouse
+        if ( _isDraggingNode && _draggedNodeIndex >= 0 && _draggedNodeIndex < Registry.Count )
+        {
+            ref var draggedSpatial = ref Registry.GetSpatialRef( _draggedNodeIndex );
+            draggedSpatial.Position = _currentMouseWorldPos - _dragOffset;
+            draggedSpatial.Velocity = Vector2.Zero; // Prevent physics from pushing it away
+        }
+
+        // 2. Step Physics if active
         if ( !Physics.IsSleeping && (!Physics.PauseDuringPlay || !Game.IsPlaying) )
         {
-            Physics.Step( Registry, Edges, RealTime.Delta );
+            Physics.Step( Registry, Edges, RealTime.Delta, Theme.NodeSizeScale );
             UpdateFloatingCardPosition();
             Update();
         }
 
+        // 3. Smooth Camera Animation
         if ( _isAnimatingCamera )
         {
             float dt = RealTime.Delta;
@@ -262,15 +275,20 @@ public class CanvasWidget : Widget
         if ( e.LeftMouseButton )
         {
             Vector2 worldPos = Transform.ScreenToWorld( e.LocalPosition );
-            int clickedIdx = Registry.PickNode( worldPos );
+            _currentMouseWorldPos = worldPos;
 
-            if ( clickedIdx >= 0 )
+            // 100% Guarantee: If a node is currently hovered, select EXACTLY that node!
+            int targetIdx = HoveredNodeIndex >= 0 ? HoveredNodeIndex : Registry.PickNode( worldPos, Theme.NodeSizeScale );
+
+            if ( targetIdx >= 0 )
             {
-                _draggedNodeIndex = clickedIdx;
-                _dragOffset = worldPos - Registry.GetSpatialRef( clickedIdx ).Position;
+                _draggedNodeIndex = targetIdx;
+                _dragOffset = worldPos - Registry.GetSpatialRef( targetIdx ).Position;
                 _dragStartMouse = e.LocalPosition;
-                _hasStartedDragThreshold = false;
-                SelectNode( clickedIdx );
+                _isDraggingNode = false;
+                _dragNodeWasPinnedOriginally = Registry.GetSpatialRef( targetIdx ).IsPinned;
+
+                SelectNode( targetIdx );
             }
             else
             {
@@ -283,6 +301,9 @@ public class CanvasWidget : Widget
 
     protected override void OnMouseMove( MouseEvent e )
     {
+        Vector2 worldPos = Transform.ScreenToWorld( e.LocalPosition );
+        _currentMouseWorldPos = worldPos;
+
         if ( _isPanning )
         {
             Transform.PanOffset = _panStartOffset + (e.LocalPosition - _panStartMouse);
@@ -292,22 +313,23 @@ public class CanvasWidget : Widget
             return;
         }
 
-        Vector2 worldPos = Transform.ScreenToWorld( e.LocalPosition );
-
         if ( _draggedNodeIndex >= 0 )
         {
-            if ( !_hasStartedDragThreshold )
+            // Check 5px threshold
+            if ( !_isDraggingNode )
             {
                 if ( (e.LocalPosition - _dragStartMouse).Length >= 5.0f )
                 {
-                    _hasStartedDragThreshold = true;
+                    _isDraggingNode = true;
+                    Registry.GetSpatialRef( _draggedNodeIndex ).SetFlag( NodeFlags.Pinned, true ); // Lock in physics
                     Cursor = CursorShape.DragMove;
                 }
             }
 
-            if ( _hasStartedDragThreshold )
+            if ( _isDraggingNode )
             {
                 Registry.GetSpatialRef( _draggedNodeIndex ).Position = worldPos - _dragOffset;
+                Registry.GetSpatialRef( _draggedNodeIndex ).Velocity = Vector2.Zero;
                 Physics.WakeUp();
                 UpdateFloatingCardPosition();
                 Update();
@@ -315,8 +337,8 @@ public class CanvasWidget : Widget
             }
         }
 
-        // Hover
-        int hovered = Registry.PickNode( worldPos );
+        // Hover Detection with correct NodeSizeScale
+        int hovered = Registry.PickNode( worldPos, Theme.NodeSizeScale );
         if ( HoveredNodeIndex != hovered )
         {
             if ( HoveredNodeIndex >= 0 && HoveredNodeIndex < Registry.Count )
@@ -344,9 +366,24 @@ public class CanvasWidget : Widget
 
         if ( _draggedNodeIndex >= 0 )
         {
+            bool wasActuallyDragged = _isDraggingNode;
+
+            // Restore original pin state if node wasn't pinned before drag
+            if ( !_dragNodeWasPinnedOriginally )
+            {
+                Registry.GetSpatialRef( _draggedNodeIndex ).SetFlag( NodeFlags.Pinned, false );
+            }
+
             _draggedNodeIndex = -1;
-            _hasStartedDragThreshold = false;
+            _isDraggingNode = false;
             Cursor = HoveredNodeIndex >= 0 ? CursorShape.Finger : CursorShape.Arrow;
+
+            // Wake up physics ONLY if the user actually dragged the node past the threshold!
+            if ( wasActuallyDragged )
+            {
+                Physics.WakeUp();
+            }
+
             Update();
         }
     }

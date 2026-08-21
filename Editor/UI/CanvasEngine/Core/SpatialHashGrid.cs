@@ -5,13 +5,12 @@ using Sandbox;
 namespace ArchitectureVisualizer.UI.CanvasEngine.Core;
 
 /// <summary>
-/// Flat spatial hash grid for O(1) neighbor queries over SpatialRegistry.
-/// Zero per-frame memory allocations.
+/// Dynamic spatial hash grid with adaptive cell sizes to prevent tunneling at massive node scales.
 /// </summary>
 public sealed class SpatialHashGrid
 {
-    private readonly float _cellSize;
-    private readonly float _invCellSize;
+    private float _cellSize;
+    private float _invCellSize;
     private readonly int _gridCols;
     private readonly int _gridRows;
     private readonly int _totalCells;
@@ -19,29 +18,33 @@ public sealed class SpatialHashGrid
     private int[] _cellHead;
     private int[] _nodeNext;
 
-    public SpatialHashGrid( float cellSize = 120f, int gridCols = 128, int gridRows = 128, int initialCapacity = 4096 )
+    public SpatialHashGrid( int gridCols = 128, int gridRows = 128, int initialCapacity = 4096 )
     {
-        _cellSize = cellSize;
-        _invCellSize = 1.0f / cellSize;
         _gridCols = gridCols;
         _gridRows = gridRows;
         _totalCells = gridCols * gridRows;
+
+        _cellSize = 120f;
+        _invCellSize = 1.0f / _cellSize;
 
         _cellHead = new int[_totalCells];
         _nodeNext = new int[initialCapacity];
     }
 
     /// <summary>
-    /// Rebuilds spatial grid index from SpatialRegistry.
+    /// Rebuilds spatial grid index with adaptive cell sizing based on node scale.
     /// </summary>
-    public void Build( SpatialRegistry registry )
+    public void Build( SpatialRegistry registry, float nodeSizeScale = 1.0f )
     {
         int count = registry.Count;
-
         if ( _nodeNext.Length < count )
         {
             Array.Resize( ref _nodeNext, Math.Max( count * 2, 64 ) );
         }
+
+        // Adaptive Cell Size: Cell must be larger than the largest possible node
+        _cellSize = MathF.Max( 100f, 120f * nodeSizeScale );
+        _invCellSize = 1.0f / _cellSize;
 
         Array.Fill( _cellHead, -1 );
 

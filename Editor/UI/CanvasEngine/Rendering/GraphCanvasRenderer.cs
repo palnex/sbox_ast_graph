@@ -9,7 +9,7 @@ using Sandbox;
 namespace ArchitectureVisualizer.UI.CanvasEngine.Rendering;
 
 /// <summary>
-/// Unified high-performance vector renderer with Z-Layer stratification, neon additive halos, and label culling.
+/// Unified high-performance vector renderer with Z-Layer stratification, neon additive halos, and theme-driven scaling.
 /// </summary>
 public sealed class GraphCanvasRenderer
 {
@@ -19,8 +19,8 @@ public sealed class GraphCanvasRenderer
         int nodeCount = spatials.Length;
         int edgeCount = edges.Count;
 
-        // 1. Draw Edges
-        Paint.Antialiasing = false; // Blazing fast line rasterization
+        // 1. Draw Edges Pass
+        Paint.Antialiasing = false; // Fast line rasterization
         Paint.ClearBrush();
 
         for ( int i = 0; i < edgeCount; i++ )
@@ -48,13 +48,16 @@ public sealed class GraphCanvasRenderer
             }
 
             Color strokeColor = edgeColor.WithAlpha( edgeColor.a * alphaMult );
-            float strokeWidth = inFocus && ctx.HasActiveFocus ? 2.0f : 1.0f;
+
+            // 1. Link Thickness Multiplier
+            float baseWidth = inFocus && ctx.HasActiveFocus ? 2.0f : 1.0f;
+            float strokeWidth = MathF.Max( 0.5f, baseWidth * ctx.Theme.LinkThicknessScale );
 
             Paint.SetPen( strokeColor, strokeWidth );
             Paint.DrawLine( p0, p1 );
         }
 
-        // 2. Draw Nodes (Z-Stratified)
+        // 2. Draw Nodes Pass
         Paint.Antialiasing = true;
 
         for ( int i = 0; i < nodeCount; i++ )
@@ -62,18 +65,20 @@ public sealed class GraphCanvasRenderer
             ref readonly var node = ref spatials[i];
             if ( node.IsHidden ) continue;
 
-            Rect nodeBounds = new( node.Position - new Vector2( node.Radius ), new Vector2( node.Radius * 2f ) );
+            // 2. Dynamic Node Size Scaling
+            float scaledWorldRadius = node.Radius * ctx.Theme.NodeSizeScale;
+            Rect nodeBounds = new( node.Position - new Vector2( scaledWorldRadius ), new Vector2( scaledWorldRadius * 2f ) );
             if ( !ctx.Transform.IsWorldRectVisible( nodeBounds, ctx.VisibleWorldRect ) )
                 continue;
 
             Vector2 screenPos = ctx.Transform.WorldToScreen( node.Position );
-            float screenRadius = MathF.Max( 3.5f, node.Radius * ctx.Transform.Zoom );
+            float screenRadius = MathF.Max( 3.0f, scaledWorldRadius * ctx.Transform.Zoom );
 
             bool inFocus = ctx.IsNodeInFocus( i );
             float alphaMult = inFocus ? 1.0f : 0.10f;
             var payload = registry.GetPayload( i );
 
-            // A. Neon Glow Halo Pass (Clean & Subtle)
+            // A. Neon Glow Halo Pass (Subtle & Clean)
             if ( node.IsSelected )
             {
                 Paint.ClearPen();
@@ -111,13 +116,15 @@ public sealed class GraphCanvasRenderer
                 Paint.DrawCircle( screenPos, screenRadius );
             }
 
-            // C. Label Typography Pass
+            // C. Label Typography Pass (With Text Fade Threshold)
             bool isPrimary = node.IsHovered || node.IsSelected;
             bool isNeighbor = inFocus && ctx.HasActiveFocus;
             int neighborCount = ctx.FocusedNeighborIndices?.Count ?? 0;
 
             bool allowNeighborLabel = isNeighbor && (neighborCount < 18 || ctx.Transform.Zoom > 1.25f);
-            bool shouldShowLabel = (isPrimary || allowNeighborLabel) && !ctx.IsLowDetail;
+            bool isZoomAboveThreshold = ctx.Transform.Zoom >= ctx.Theme.TextFadeThreshold;
+
+            bool shouldShowLabel = (isPrimary || (allowNeighborLabel && isZoomAboveThreshold)) && !ctx.IsLowDetail;
 
             if ( shouldShowLabel )
             {

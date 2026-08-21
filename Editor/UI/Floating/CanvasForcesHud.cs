@@ -7,7 +7,7 @@ using Sandbox;
 namespace ArchitectureVisualizer.UI.Floating;
 
 /// <summary>
-/// Floating semi-transparent HUD menu for live physics tuning and simulation controls.
+/// Floating semi-transparent HUD menu for Display settings and live Physics tuning.
 /// </summary>
 public sealed class CanvasForcesHud : Widget
 {
@@ -33,7 +33,7 @@ public sealed class CanvasForcesHud : Widget
         Layout.Spacing = 4;
 
         // Toggle Button
-        var toggleBtn = Layout.Add( new Button( "Forces ⚙️", "tune", this ) );
+        var toggleBtn = Layout.Add( new Button( "Settings ⚙️", "tune", this ) );
         toggleBtn.Clicked = ToggleMenu;
         toggleBtn.FixedHeight = 28;
 
@@ -58,62 +58,81 @@ public sealed class CanvasForcesHud : Widget
         Update();
     }
 
-    /// <summary>
-    /// Snaps the menu to the top-right corner of the parent canvas with proper margin.
-    /// </summary>
     public void UpdatePosition()
     {
         if ( Parent == null ) return;
-        float rightMargin = 14f;
-        float topMargin = 14f;
-        Position = new Vector2( Parent.Width - Width - rightMargin, topMargin );
+        Position = new Vector2( Parent.Width - Width - 14f, 14f );
     }
 
     private void BuildControls()
     {
+        var theme = _canvas.Theme;
         var p = _canvas.Physics;
 
-        // 1. Link Distance
+        // ================= DISPLAY SECTION =================
+        var displayHeader = _contentPanel.Layout.Add( new Label( "DISPLAY", _contentPanel ) );
+        displayHeader.SetStyles( "color: #58a6ff; font-weight: bold; font-size: 10px; margin-top: 2px;" );
+
+        // 1. Node Size Scale
+        AddSlider( "Node Size", 0.4f, 10.0f, theme.NodeSizeScale, val =>
+        {
+            theme.NodeSizeScale = val;
+            _canvas.Physics.Reheat( 0.40f );
+            _canvas.Update();
+        } );
+
+        // 2. Link Thickness Scale
+        AddSlider( "Link Thickness", 0.2f, 4.0f, theme.LinkThicknessScale, val =>
+        {
+            theme.LinkThicknessScale = val;
+            _canvas.Update();
+        } );
+
+        // 3. Text Fade Threshold
+        AddSlider( "Text Fade Zoom", 0.2f, 1.8f, theme.TextFadeThreshold, val =>
+        {
+            theme.TextFadeThreshold = val;
+            _canvas.Update();
+        } );
+
+        // ================= FORCES SECTION =================
+        var forcesHeader = _contentPanel.Layout.Add( new Label( "PHYSICS FORCES", _contentPanel ) );
+        forcesHeader.SetStyles( "color: #7ee787; font-weight: bold; font-size: 10px; margin-top: 6px;" );
+
         AddSlider( "Link Distance", 30f, 600f, p.LinkDistanceSetting, val =>
         {
             p.LinkDistanceSetting = val;
-            OnForceChanged();
+            _canvas.Physics.Reheat( 0.35f );
+            _canvas.Update();
         } );
 
-        // 2. Link Strength
-        AddSlider( "Link Strength", 0.05f, 2.0f, p.LinkForceSetting, val =>
+        AddSlider( "Link Force", 0.05f, 3.0f, p.LinkForceSetting, val =>
         {
             p.LinkForceSetting = val;
-            OnForceChanged();
+            _canvas.Physics.Reheat( 0.35f );
+            _canvas.Update();
         } );
 
-        // 3. Repel Force (Barnes-Hut)
-        AddSlider( "Repel Force", 100f, 5000f, p.RepulsionConstant, val =>
+        AddSlider( "Repel Force", 0.0f, 35.0f, p.RepulsionConstant, val =>
         {
             p.RepulsionConstant = val;
-            OnForceChanged();
+            _canvas.Physics.Reheat( 0.60f );
+            _canvas.Update();
         } );
 
-        // 4. Repel Radius
-        AddSlider( "Repel Radius", 100f, 1500f, p.RepulsionMaxDist, val =>
-        {
-            p.RepulsionMaxDist = val;
-            OnForceChanged();
-        } );
-
-        // 5. Center Force
         AddSlider( "Center Force", 0.0f, 1.5f, p.CenterForceSetting, val =>
         {
             p.CenterForceSetting = val;
-            OnForceChanged();
+            _canvas.Physics.Reheat( 0.35f );
+            _canvas.Update();
         } );
 
-        // 6. Freeze during play toggle
+        // Freeze during play toggle
         var playCheck = _contentPanel.Layout.Add( new Checkbox( "Freeze During Play", _contentPanel ) );
         playCheck.Value = p.PauseDuringPlay;
         playCheck.StateChanged += _ => p.PauseDuringPlay = playCheck.Value;
 
-        // 7. Reheat Button
+        // Reheat Button
         var reheatBtn = _contentPanel.Layout.Add( new Button( "Reheat Physics 🔥", "local_fire_department", _contentPanel ) );
         reheatBtn.Clicked = () =>
         {
@@ -128,7 +147,7 @@ public sealed class CanvasForcesHud : Widget
         row.Layout = Layout.Column();
         row.Layout.Spacing = 2;
 
-        var label = row.Layout.Add( new Label( $"{name}: {currentVal:F0}", row ) );
+        var label = row.Layout.Add( new Label( $"{name}: {currentVal:F2}", row ) );
         label.SetStyles( "color: #c9d1d9; font-size: 10px;" );
 
         var slider = row.Layout.Add( new FloatSlider( row ) );
@@ -137,15 +156,9 @@ public sealed class CanvasForcesHud : Widget
         slider.Value = currentVal;
         slider.OnValueEdited += () =>
         {
-            label.Text = $"{name}: {slider.Value:F1}";
+            label.Text = $"{name}: {slider.Value:F2}";
             onValueChanged( slider.Value );
         };
-    }
-
-    private void OnForceChanged()
-    {
-        _canvas.Physics.Reheat( 0.35f );
-        _canvas.Update();
     }
 
     protected override void OnMousePress( MouseEvent e ) => e.Accepted = true;

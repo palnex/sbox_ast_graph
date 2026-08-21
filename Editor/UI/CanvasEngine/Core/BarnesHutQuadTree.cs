@@ -196,15 +196,18 @@ public sealed class BarnesHutQuadTree
         }
     }
 
-    public Vector2 ComputeRepulsion( int targetNodeIdx, Vector2 targetPos, float kRepulse, float theta = 0.85f, float maxDist = 550f )
+    /// <summary>
+    /// Computes mass-weighted Barnes-Hut repulsion force.
+    /// </summary>
+    public Vector2 ComputeRepulsion( int targetNodeIdx, Vector2 targetPos, float targetMass, float kRepulse, float theta = 0.85f, float maxDist = 2500f )
     {
         if ( _cellCount == 0 ) return Vector2.Zero;
         Vector2 accumForce = Vector2.Zero;
-        TraverseCell( 0, targetNodeIdx, targetPos, kRepulse, theta * theta, maxDist * maxDist, ref accumForce );
+        TraverseCell( 0, targetNodeIdx, targetPos, targetMass, kRepulse, theta * theta, maxDist * maxDist, ref accumForce );
         return accumForce;
     }
 
-    private void TraverseCell( int cellIdx, int targetNodeIdx, Vector2 targetPos, float kRepulse, float thetaSq, float maxDistSq, ref Vector2 accumForce )
+    private void TraverseCell( int cellIdx, int targetNodeIdx, Vector2 targetPos, float targetMass, float kRepulse, float thetaSq, float maxDistSq, ref Vector2 accumForce )
     {
         if ( cellIdx < 0 || cellIdx >= _cellCount ) return;
         ref var cell = ref _cells[cellIdx];
@@ -214,32 +217,35 @@ public sealed class BarnesHutQuadTree
         float distSq = delta.LengthSquared;
 
         if ( distSq > maxDistSq ) return;
-        distSq += 25.0f; // Softening factor
+
+        // Softening radius scales with mass to prevent overlapping centers
+        float minSoftDist = 64.0f + (targetMass + cell.TotalMass) * 4.0f;
+        distSq = MathF.Max( distSq, minSoftDist );
+
+        float dist = MathF.Sqrt( distSq );
+        float forceMag = (kRepulse * 350.0f * cell.TotalMass) / distSq;
 
         if ( cell.IsLeaf )
         {
             if ( cell.NodeIndex != targetNodeIdx )
             {
-                float invDist = 1.0f / MathF.Sqrt( distSq );
-                float forceMag = (kRepulse * cell.TotalMass) / distSq;
-                accumForce += delta * invDist * forceMag;
+                accumForce += (delta / dist) * forceMag;
             }
             return;
         }
 
+        // Barnes-Hut criterion
         float sizeSq = cell.Bounds.Width * cell.Bounds.Width;
         if ( (sizeSq / distSq) < thetaSq )
         {
-            float invDist = 1.0f / MathF.Sqrt( distSq );
-            float forceMag = (kRepulse * cell.TotalMass) / distSq;
-            accumForce += delta * invDist * forceMag;
+            accumForce += (delta / dist) * forceMag;
         }
         else
         {
-            TraverseCell( cell.ChildNW, targetNodeIdx, targetPos, kRepulse, thetaSq, maxDistSq, ref accumForce );
-            TraverseCell( cell.ChildNE, targetNodeIdx, targetPos, kRepulse, thetaSq, maxDistSq, ref accumForce );
-            TraverseCell( cell.ChildSW, targetNodeIdx, targetPos, kRepulse, thetaSq, maxDistSq, ref accumForce );
-            TraverseCell( cell.ChildSE, targetNodeIdx, targetPos, kRepulse, thetaSq, maxDistSq, ref accumForce );
+            TraverseCell( cell.ChildNW, targetNodeIdx, targetPos, targetMass, kRepulse, thetaSq, maxDistSq, ref accumForce );
+            TraverseCell( cell.ChildNE, targetNodeIdx, targetPos, targetMass, kRepulse, thetaSq, maxDistSq, ref accumForce );
+            TraverseCell( cell.ChildSW, targetNodeIdx, targetPos, targetMass, kRepulse, thetaSq, maxDistSq, ref accumForce );
+            TraverseCell( cell.ChildSE, targetNodeIdx, targetPos, targetMass, kRepulse, thetaSq, maxDistSq, ref accumForce );
         }
     }
 }

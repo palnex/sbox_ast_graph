@@ -54,9 +54,9 @@ public sealed class SpatialRegistry
     public NodePayload GetPayload( int index ) => _payloads[index];
 
     /// <summary>
-    /// Analytical Distance-Sorted and Z-Priority picking: finds the closest top-most node under cursor.
+    /// Exact geometric hit-testing with distance-sorted and Z-priority picking.
     /// </summary>
-    public int PickNode( Vector2 worldPos )
+    public int PickNode( Vector2 worldPos, float sizeScale = 1.0f )
     {
         int bestIdx = -1;
         float bestDistSq = float.MaxValue;
@@ -67,11 +67,14 @@ public sealed class SpatialRegistry
             ref readonly var n = ref _spatials[i];
             if ( n.IsHidden ) continue;
 
+            // Exact visual radius matching renderer (0 padding!)
+            float exactRadius = n.Radius * sizeScale;
+
             bool isHit = n.Shape switch
             {
-                NodeShape.Circle => SpatialHitTester.HitTestCircle( worldPos, n.Position, n.Radius ),
-                NodeShape.Box => SpatialHitTester.HitTestBox( worldPos, new Rect( n.Position - new Vector2( n.Radius ), new Vector2( n.Radius * 2f ) ) ),
-                _ => SpatialHitTester.HitTestCircle( worldPos, n.Position, n.Radius )
+                NodeShape.Circle => SpatialHitTester.HitTestCircle( worldPos, n.Position, exactRadius ),
+                NodeShape.Box => SpatialHitTester.HitTestBox( worldPos, new Rect( n.Position - new Vector2( exactRadius ), new Vector2( exactRadius * 2f ) ) ),
+                _ => SpatialHitTester.HitTestCircle( worldPos, n.Position, exactRadius )
             };
 
             if ( isHit )

@@ -75,7 +75,7 @@ public static class GraphCanvasAdapter
             Vector2 spiralPos = new( r * MathF.Cos( phi ), r * MathF.Sin( phi ) );
 
             ushort zLevel = (ushort)Math.Clamp( (int)MathF.Log2( degree + 1 ), 0, 16 );
-            float radius = 6.0f + MathF.Sqrt( degree ) * 1.5f;
+            float radius = 6.0f + MathF.Sqrt( degree ) * 1.0f; // x for more hitbox
 
             NodeSpatialData spatial = new()
             {
