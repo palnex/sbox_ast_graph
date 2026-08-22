@@ -1,12 +1,18 @@
+
+
 # SboxAstGraph
+
+
+
+
 
 
 > **MAJOR UPDATE: Migrated to Native S&box Editor Library & GPU Visualizer Engine!**
 > 
 > The project has evolved from a standalone CLI utility into a **high-performance, native S&box Editor Library (`.sbproj`)**. 
-> It now features live in-memory `Sandbox.TypeLibrary` and Roslyn AST integration, real-time 3D Orbit / 2D Ortho camera navigation, and a hardware-accelerated GPU instanced node visualizer running at locked 144 FPS (2 Draw Calls).
+> It now features live in-memory `Sandbox.TypeLibrary` and Roslyn AST integration, real-time 3D Orbit / 2D Ortho camera navigation, and a hardware-accelerated GPU instanced node visualizer.
 
-![SboxAstGraph Native S&box Visualizer](media/preview.png)
+<video src="https://github.com/user-attachments/assets/037daee8-10b5-4211-accf-e009c5ffc75a" autoplay loop muted playsinline width="60%"></video>
 
 ---
 
