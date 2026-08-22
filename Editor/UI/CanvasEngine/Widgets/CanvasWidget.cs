@@ -111,6 +111,7 @@ public class CanvasWidget : SceneRenderingWidget, IDisposable
         _focusedNeighbors.Clear();
         _inspectorOverlay.Visible = false;
 
+        _nodeObject.MarkTextureDirty();
         SyncGpuBuffers();
         Update();
     }
@@ -144,6 +145,7 @@ public class CanvasWidget : SceneRenderingWidget, IDisposable
             _inspectorOverlay.Visible = false;
         }
 
+        _nodeObject.MarkTextureDirty();
         RebuildFocusedNeighbors();
         SyncGpuBuffers();
         UpdateFloatingCardPosition();
@@ -213,9 +215,8 @@ public class CanvasWidget : SceneRenderingWidget, IDisposable
 
         if ( _nodeTransformsStaging.Length < nodeCount )
         {
-            int newCap = Math.Max( _nodeTransformsStaging.Length * 2, nodeCount );
-            Array.Resize( ref _nodeTransformsStaging, newCap );
-            Array.Resize( ref _nodeColorsStaging, newCap );
+            Array.Resize( ref _nodeTransformsStaging, Math.Max( _nodeTransformsStaging.Length * 2, nodeCount ) );
+            Array.Resize( ref _nodeColorsStaging, Math.Max( _nodeColorsStaging.Length * 2, nodeCount ) );
         }
 
         if ( _edgeStaging.Length < edgeCount )
@@ -226,7 +227,7 @@ public class CanvasWidget : SceneRenderingWidget, IDisposable
         var spatials = Registry.GetReadOnlySpatialSpan();
         bool hasFocus = HoveredNodeIndex >= 0 || SelectedNodeIndex >= 0;
 
-        // 1. Nodes
+        // 1. Быстрый перенос позиций нод
         for ( int i = 0; i < nodeCount; i++ )
         {
             ref readonly var node = ref spatials[i];
@@ -257,7 +258,7 @@ public class CanvasWidget : SceneRenderingWidget, IDisposable
 
         _nodeObject.UpdateNodes( _nodeTransformsStaging.AsSpan( 0, nodeCount ), spatials, _nodeColorsStaging.AsSpan( 0, nodeCount ) );
 
-        // 2. Edges
+        // 2. Быстрый перенос ребер
         int validEdgeCount = 0;
         for ( int i = 0; i < edgeCount; i++ )
         {
@@ -504,6 +505,7 @@ public class CanvasWidget : SceneRenderingWidget, IDisposable
             if ( HoveredNodeIndex >= 0 && HoveredNodeIndex < Registry.Count )
                 Registry.GetSpatialRef( HoveredNodeIndex ).SetFlag( NodeFlags.Hovered, true );
 
+            _nodeObject.MarkTextureDirty();
             RebuildFocusedNeighbors();
             SyncGpuBuffers();
             Cursor = HoveredNodeIndex >= 0 ? CursorShape.Finger : CursorShape.Arrow;

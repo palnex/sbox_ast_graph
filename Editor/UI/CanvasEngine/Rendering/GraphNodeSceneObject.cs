@@ -7,7 +7,7 @@ using Sandbox.Rendering;
 namespace ArchitectureVisualizer.UI.CanvasEngine.Rendering;
 
 /// <summary>
-/// GPU SDF node renderer using procedural quads and VAT byte-packed texture.
+/// GPU SDF node renderer using procedural quads and dirty-flagged VAT texture streaming.
 /// </summary>
 public sealed class GraphNodeSceneObject : SceneCustomObject
 {
@@ -17,8 +17,11 @@ public sealed class GraphNodeSceneObject : SceneCustomObject
     private readonly Color32[] _colorStaging = new Color32[512 * 512];
     private Transform[] _transforms = new Transform[4096];
     private int _count = 0;
+    private bool _isTextureDirty = true;
 
     public RenderAttributes RenderAttributes => _renderAttributes;
+
+    public void MarkTextureDirty() => _isTextureDirty = true;
 
     public GraphNodeSceneObject( SceneWorld world ) : base( world )
     {
@@ -83,27 +86,32 @@ public sealed class GraphNodeSceneObject : SceneCustomObject
 
         transforms.CopyTo( _transforms );
 
-        int uploadCount = Math.Min( _count, 512 * 512 );
-        for ( int i = 0; i < uploadCount; i++ )
+        // Only upload 1MB texture when selection/hover/colors actually change!
+        if ( _isTextureDirty )
         {
-            ref readonly var spatial = ref spatials[i];
-            Color baseCol = colors[i];
+            int uploadCount = Math.Min( _count, 512 * 512 );
+            for ( int i = 0; i < uploadCount; i++ )
+            {
+                ref readonly var spatial = ref spatials[i];
+                Color baseCol = colors[i];
 
-            byte flags = (byte)((byte)spatial.Shape & 0x0F);
-            if ( spatial.IsHovered ) flags |= (1 << 4);
-            if ( spatial.IsSelected ) flags |= (1 << 5);
-            if ( spatial.IsDimmed ) flags |= (1 << 6);
-            if ( spatial.IsPinned ) flags |= (1 << 7);
+                byte flags = (byte)((byte)spatial.Shape & 0x0F);
+                if ( spatial.IsHovered ) flags |= (1 << 4);
+                if ( spatial.IsSelected ) flags |= (1 << 5);
+                if ( spatial.IsDimmed ) flags |= (1 << 6);
+                if ( spatial.IsPinned ) flags |= (1 << 7);
 
-            _colorStaging[i] = new Color32(
-                (byte)(baseCol.r * 255f),
-                (byte)(baseCol.g * 255f),
-                (byte)(baseCol.b * 255f),
-                flags
-            );
+                _colorStaging[i] = new Color32(
+                    (byte)(baseCol.r * 255f),
+                    (byte)(baseCol.g * 255f),
+                    (byte)(baseCol.b * 255f),
+                    flags
+                );
+            }
+
+            _colorTexture.Update<Color32>( _colorStaging );
+            _isTextureDirty = false;
         }
-
-        _colorTexture.Update<Color32>( _colorStaging );
     }
 
     public override void RenderSceneObject()

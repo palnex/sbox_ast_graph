@@ -1,6 +1,6 @@
 HEADER
 {
-    Description = "Dynamic Multi-Pattern Ribbon Edge Shader";
+    Description = "Dynamic Multi-Pattern Ribbon Edge Shader with Overdraw LOD";
     Version = 1;
 }
 
@@ -58,26 +58,36 @@ PS
 
     float4 MainPs(PixelInput i) : SV_Target0
     {
+        float4 baseColor = i.vColor;
+
+        // =========================================================================
+        // 1. FAST-PATH FOR BACKGROUND EDGES (Zero Overdraw Math in dense clusters!)
+        // =========================================================================
+        if (baseColor.a < 0.50)
+        {
+            return baseColor; // Ultra-fast 1-cycle write for background lines
+        }
+
+        // =========================================================================
+        // 2. HIGH-PRECISION ANIMATED PATH (Active / Focused Connections)
+        // =========================================================================
         float u = i.vTextureCoords.x;
         float v = i.vTextureCoords.y;
         float style = i.vEdgeParams.x;
         float speed = max(0.2, i.vEdgeParams.y);
-
-        float4 baseColor = i.vColor;
         float crossDist = abs(v - 0.5) * 2.0;
 
         float finalAlpha = baseColor.a;
         float3 finalColor = baseColor.rgb;
 
-        // 1. DASHED (- - - -)
+        // STYLE 1: DASHED (- - - -)
         if (style > 0.5 && style < 1.5)
         {
             float dash = frac(u * 16.0 - g_flTime * speed * 2.0);
             if (dash > 0.5)
                 discard;
-            finalAlpha = max(0.7, baseColor.a);
         }
-        // 2. CHEVRON ARROWS (> > > >)
+        // STYLE 2: CHEVRON ARROWS (> > > >)
         else if (style > 1.5 && style < 2.5)
         {
             float cell = frac(u * 6.0 - g_flTime * speed * 1.5);
@@ -92,14 +102,13 @@ PS
             if (isArrow > 0.5)
                 finalColor = lerp(baseColor.rgb, float3(1.0, 1.0, 1.0), 0.55);
         }
-        // 3. DOUBLE LINE (= = = =)
+        // STYLE 3: DOUBLE LINE (= = = =)
         else if (style > 2.5 && style < 3.5)
         {
             if (crossDist < 0.35)
                 discard;
-            finalAlpha = max(0.8, baseColor.a);
         }
-        // 4. LASER PULSE
+        // STYLE 4: LASER PULSE
         else if (style > 3.5 && style < 4.5)
         {
             float pulsePos = frac(g_flTime * speed * 0.8);
@@ -110,12 +119,6 @@ PS
 
             finalColor += float3(0.5, 0.8, 1.0) * (pulse * 1.8);
             finalAlpha = max(baseColor.a * 0.4, pulse);
-        }
-        // 0. SOLID GLOW
-        else
-        {
-            float core = 1.0 - smoothstep(0.0, 0.9, crossDist);
-            finalAlpha = max(0.4, baseColor.a * core);
         }
 
         return float4(finalColor, finalAlpha);

@@ -48,7 +48,7 @@ public sealed class GpuPhysicsSolver : IDisposable
 
     public float Alpha { get; private set; } = 1.0f;
     public float AlphaTarget { get; set; } = 0.0f;
-    public float AlphaDecay { get; set; } = 0.016f;
+    public float AlphaDecay { get; set; } = 0.022f;
     public float AlphaMin { get; set; } = 0.001f;
 
     public float RepulsionConstant { get; set; } = 10.0f;
