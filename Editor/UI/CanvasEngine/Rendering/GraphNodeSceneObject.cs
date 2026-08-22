@@ -13,7 +13,8 @@ public sealed class GraphNodeSceneObject : SceneCustomObject
 {
     private readonly Model _nodeModel;
     private readonly Texture _colorTexture;
-    private readonly RenderAttributes _renderAttributes;
+    private readonly RenderAttributes _renderAttributes = new();
+    public RenderAttributes RenderAttributes => _renderAttributes;
 
     private readonly Color32[] _colorStaging = new Color32[512 * 512];
     private Transform[] _transforms;

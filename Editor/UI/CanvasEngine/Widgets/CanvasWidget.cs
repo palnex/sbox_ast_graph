@@ -30,7 +30,7 @@ public class CanvasWidget : Widget, IDisposable
     private Color[] _nodeColorsStaging = new Color[2048];
     public CanvasTheme Theme { get; set; } = CanvasTheme.DefaultDark;
     public SpatialRegistry Registry { get; } = new();
-    public SleepyPhysicsSolver Physics { get; } = new();
+    public GpuPhysicsSolver Physics { get; } = new();
     public List<CanvasEdge> Edges { get; } = new();
 
     public int SelectedNodeIndex { get; private set; } = -1;
@@ -179,21 +179,19 @@ public class CanvasWidget : Widget, IDisposable
 
         float dt = RealTime.Delta;
 
-        if ( _isDraggingNode && _draggedNodeIndex >= 0 && _draggedNodeIndex < Registry.Count )
+        Vector2 dragWorldPos = Vector2.Zero;
+        if ( _draggedNodeIndex >= 0 )
         {
             Vector3? worldPlaneHit = CameraController.GetWorldPosOnPlane( _lastMousePos );
             if ( worldPlaneHit.HasValue )
             {
-                ref var draggedSpatial = ref Registry.GetSpatialRef( _draggedNodeIndex );
-                Vector3 target = worldPlaneHit.Value - _dragOffset;
-                draggedSpatial.Position = new Vector2( target.x, target.y );
-                draggedSpatial.Velocity = Vector2.Zero;
+                dragWorldPos = new Vector2( worldPlaneHit.Value.x, worldPlaneHit.Value.y );
             }
         }
 
         if ( !Physics.IsSleeping && (!Physics.PauseDuringPlay || !Game.IsPlaying) )
         {
-            Physics.Step( Registry, Edges, dt, Theme.NodeSizeScale );
+            Physics.Step( Registry, dt, Theme.NodeSizeScale, _draggedNodeIndex, dragWorldPos );
             SyncGpuBuffers();
             UpdateFloatingCardPosition();
             Update();
@@ -252,6 +250,12 @@ public class CanvasWidget : Widget, IDisposable
 
             _nodeTransformsStaging[i] = new Transform( pos, Rotation.Identity, scale );
             _nodeColorsStaging[i] = col;
+        }
+
+        if ( Physics.CurrentNodesBuffer != null && Physics.CurrentNodesBuffer.IsValid )
+        {
+            _nodeObject.RenderAttributes.Set( "NodesBuffer", Physics.CurrentNodesBuffer );
+            _nodeObject.RenderAttributes.Set( "NodeSizeScale", Theme.NodeSizeScale );
         }
 
         _nodeObject.UpdateNodes( _nodeTransformsStaging.AsSpan( 0, nodeCount ), spatials, _nodeColorsStaging.AsSpan( 0, nodeCount ) );
@@ -685,6 +689,7 @@ public class CanvasWidget : Widget, IDisposable
     {
         _edgeObject?.Dispose();
         _nodeObject?.Dispose();
+        Physics?.Dispose();
 
         if ( _camera != null )
         {

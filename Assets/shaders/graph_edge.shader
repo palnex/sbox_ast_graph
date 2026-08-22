@@ -30,7 +30,7 @@ struct PixelInput
 {
 #include "common/pixelinput.hlsl"
     float4 vColor : COLOR0;
-    float2 vEdgeParams : TEXCOORD8; // x: StyleID (0..4), y: Speed
+    float2 vEdgeParams : TEXCOORD8;
 };
 
 VS
@@ -41,7 +41,6 @@ VS
     {
         PixelInput o = ProcessVertex(i);
         o.vColor = i.vColor;
-        // Read Style ID and Speed passed via Normal vector
         o.vEdgeParams = i.vNormalOs.xy;
         return FinalizeVertex(o);
     }
@@ -59,19 +58,18 @@ PS
 
     float4 MainPs(PixelInput i) : SV_Target0
     {
-        float u = i.vTextureCoords.x; // 0.0 (Source) -> 1.0 (Target)
-        float v = i.vTextureCoords.y; // 0.0 (Left) -> 1.0 (Right)
-
-        float style = i.vEdgeParams.x; // 0: Solid, 1: Dashed, 2: Arrows, 3: Double, 4: Laser
+        float u = i.vTextureCoords.x;
+        float v = i.vTextureCoords.y;
+        float style = i.vEdgeParams.x;
         float speed = max(0.2, i.vEdgeParams.y);
 
         float4 baseColor = i.vColor;
-        float crossDist = abs(v - 0.5) * 2.0; // 0.0 center, 1.0 border
+        float crossDist = abs(v - 0.5) * 2.0;
 
         float finalAlpha = baseColor.a;
         float3 finalColor = baseColor.rgb;
 
-        // ================= STYLE 1: DASHED (- - - -) =================
+        // 1. DASHED
         if (style > 0.5 && style < 1.5)
         {
             float dash = frac(u * 16.0 - g_flTime * speed * 2.0);
@@ -79,7 +77,7 @@ PS
                 discard;
             finalAlpha = max(0.7, baseColor.a);
         }
-        // ================= STYLE 2: CHEVRON ARROWS (> > > >) =================
+        // 2. CHEVRON ARROWS
         else if (style > 1.5 && style < 2.5)
         {
             float cell = frac(u * 6.0 - g_flTime * speed * 1.5);
@@ -94,14 +92,14 @@ PS
             if (isArrow > 0.5)
                 finalColor = lerp(baseColor.rgb, float3(1.0, 1.0, 1.0), 0.55);
         }
-        // ================= STYLE 3: DOUBLE LINE (= = = =) =================
+        // 3. DOUBLE LINE
         else if (style > 2.5 && style < 3.5)
         {
             if (crossDist < 0.35)
-                discard; // вирізаємо центр
+                discard;
             finalAlpha = max(0.8, baseColor.a);
         }
-        // ================= STYLE 4: LASER / EVENT PULSE =================
+        // 4. LASER PULSE
         else if (style > 3.5 && style < 4.5)
         {
             float pulsePos = frac(g_flTime * speed * 0.8);
@@ -113,7 +111,7 @@ PS
             finalColor += float3(0.5, 0.8, 1.0) * (pulse * 1.8);
             finalAlpha = max(baseColor.a * 0.4, pulse);
         }
-        // ================= STYLE 0: SOLID GLOW LINE =================
+        // 0. SOLID GLOW
         else
         {
             float core = 1.0 - smoothstep(0.0, 0.9, crossDist);

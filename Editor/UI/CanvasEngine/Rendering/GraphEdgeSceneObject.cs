@@ -38,16 +38,19 @@ public struct CustomRibbonVertex
 }
 
 /// <summary>
-/// GPU-accelerated dynamic edge renderer managing procedural ribbon mesh on a SceneObject.
+/// Zero-allocation GPU dynamic ribbon edge renderer reusing a single persistent Mesh.
 /// </summary>
 public sealed class GraphEdgeSceneObject : IDisposable, Sandbox.IValid
 {
     private readonly SceneWorld _sceneWorld;
     private readonly Material _lineMaterial;
     private SceneObject? _sceneObject;
+    private Mesh? _mesh;
 
-    private CustomRibbonVertex[] _vertices = new CustomRibbonVertex[8192];
-    private int[] _indices = new int[12288];
+    private CustomRibbonVertex[] _vertices = new CustomRibbonVertex[16384];
+    private int[] _indices = new int[24576];
+    private int _allocatedVertCapacity = 0;
+    private int _allocatedIndCapacity = 0;
 
     public bool IsValid => _sceneObject != null && _sceneObject.IsValid();
     bool Sandbox.IValid.IsValid => IsValid;
@@ -59,16 +62,38 @@ public sealed class GraphEdgeSceneObject : IDisposable, Sandbox.IValid
                         ?? Material.FromShader( "shaders/graph_edge.shader" )
                         ?? Material.Load( "materials/dev/primary_white.vmat" );
 
-        var builder = new ModelBuilder();
-        var model = builder.Create();
+        RecreateMesh( 16384, 24576 );
+    }
 
-        _sceneObject = new SceneObject( _sceneWorld, model )
-        {
-            Transform = new Transform( Vector3.Zero, Rotation.Identity, 1.0f ),
-            Flags = { CastShadows = false }
-        };
+    private void RecreateMesh( int vertCapacity, int indCapacity )
+    {
+        _allocatedVertCapacity = Math.Max( 64, vertCapacity );
+        _allocatedIndCapacity = Math.Max( 64, indCapacity );
+
+        _mesh = new Mesh( _lineMaterial );
+        _mesh.CreateVertexBuffer( _allocatedVertCapacity, _vertices.AsSpan( 0, _allocatedVertCapacity ) );
+        _mesh.CreateIndexBuffer( _allocatedIndCapacity, _indices.AsSpan( 0, _allocatedIndCapacity ) );
 
         var bigBounds = new BBox( new Vector3( -200000, -200000, -200000 ), new Vector3( 200000, 200000, 200000 ) );
+        _mesh.Bounds = bigBounds;
+
+        var builder = new ModelBuilder();
+        builder.AddMesh( _mesh );
+        var model = builder.Create();
+
+        if ( _sceneObject == null || !_sceneObject.IsValid() )
+        {
+            _sceneObject = new SceneObject( _sceneWorld, model )
+            {
+                Transform = new Transform( Vector3.Zero, Rotation.Identity, 1.0f ),
+                Flags = { CastShadows = false }
+            };
+        }
+        else
+        {
+            _sceneObject.Model = model;
+        }
+
         _sceneObject.Bounds = bigBounds;
     }
 
@@ -79,7 +104,10 @@ public sealed class GraphEdgeSceneObject : IDisposable, Sandbox.IValid
 
         if ( edgeCount == 0 )
         {
-            _sceneObject.Model = new ModelBuilder().Create();
+            if ( _mesh != null )
+            {
+                _mesh.SetIndexRange( 0, 0 );
+            }
             return;
         }
 
@@ -94,6 +122,12 @@ public sealed class GraphEdgeSceneObject : IDisposable, Sandbox.IValid
         if ( _indices.Length < requiredIndices )
         {
             Array.Resize( ref _indices, Math.Max( _indices.Length * 2, requiredIndices ) );
+        }
+
+        // Reallocate GPU buffers only when capacity is exceeded
+        if ( _mesh == null || requiredVertices > _allocatedVertCapacity || requiredIndices > _allocatedIndCapacity )
+        {
+            RecreateMesh( Math.Max( requiredVertices, _allocatedVertCapacity * 2 ), Math.Max( requiredIndices, _allocatedIndCapacity * 2 ) );
         }
 
         float halfThick = MathF.Max( 1.5f, thickness * 0.5f );
@@ -136,23 +170,13 @@ public sealed class GraphEdgeSceneObject : IDisposable, Sandbox.IValid
             _indices[indIdx++] = baseV + 3;
         }
 
-        if ( vertIdx == 0 )
+        if ( _mesh != null && vertIdx > 0 )
         {
-            _sceneObject.Model = new ModelBuilder().Create();
-            return;
+            // Ultra-fast in-place DMA memory stream into existing VBO/IBO
+            _mesh.SetVertexBufferData( _vertices.AsSpan( 0, vertIdx ) );
+            _mesh.SetIndexBufferData( _indices.AsSpan( 0, indIdx ) );
+            _mesh.SetIndexRange( 0, indIdx );
         }
-
-        var mesh = new Mesh( _lineMaterial );
-        mesh.CreateVertexBuffer( vertIdx, _vertices.AsSpan( 0, vertIdx ) );
-        mesh.CreateIndexBuffer( indIdx, _indices.AsSpan( 0, indIdx ) );
-
-        var bigBounds = new BBox( new Vector3( -200000, -200000, -200000 ), new Vector3( 200000, 200000, 200000 ) );
-        mesh.Bounds = bigBounds;
-
-        var builder = new ModelBuilder();
-        builder.AddMesh( mesh );
-        _sceneObject.Model = builder.Create();
-        _sceneObject.Bounds = bigBounds;
     }
 
     public void Dispose()
@@ -162,5 +186,6 @@ public sealed class GraphEdgeSceneObject : IDisposable, Sandbox.IValid
             _sceneObject.Delete();
             _sceneObject = null;
         }
+        _mesh = null;
     }
 }

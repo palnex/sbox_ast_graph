@@ -132,6 +132,7 @@ public static class GraphCanvasAdapter
             }
         }
 
+        canvas.Physics.InitializeBuffers( canvas.Registry, canvas.Edges );
         canvas.SyncGpuBuffers();
         canvas.Physics.Reheat( 1.0f );
         canvas.Update();
