@@ -1,5 +1,6 @@
 #nullable enable
 using System;
+using ArchitectureVisualizer.UI.CanvasEngine.Core;
 using ArchitectureVisualizer.UI.CanvasEngine.Models;
 using Sandbox;
 using Sandbox.Rendering;
@@ -7,23 +8,21 @@ using Sandbox.Rendering;
 namespace ArchitectureVisualizer.UI.CanvasEngine.Rendering;
 
 /// <summary>
-/// Ultra high-performance GPU SDF node renderer using procedural quads and VAT byte packing.
+/// Zero-Copy GPU SDF node renderer drawing instances directly from VRAM buffers.
 /// </summary>
 public sealed class GraphNodeSceneObject : SceneCustomObject
 {
     private readonly Model _nodeModel;
     private readonly Texture _colorTexture;
     private readonly RenderAttributes _renderAttributes = new();
-    public RenderAttributes RenderAttributes => _renderAttributes;
-
     private readonly Color32[] _colorStaging = new Color32[512 * 512];
-    private Transform[] _transforms;
     private int _count = 0;
 
-    public GraphNodeSceneObject( SceneWorld world, int initialCapacity = 4096 ) : base( world )
-    {
-        _renderAttributes = new RenderAttributes();
+    private Transform[] _transforms = new Transform[4096];
+    public RenderAttributes RenderAttributes => _renderAttributes;
 
+    public GraphNodeSceneObject( SceneWorld world ) : base( world )
+    {
         _colorTexture = new Texture2DBuilder()
             .WithName( "g_tColors" )
             .WithSize( 512, 512 )
@@ -41,11 +40,8 @@ public sealed class GraphNodeSceneObject : SceneCustomObject
                        ?? Material.FromShader( "shaders/graph_node.shader" )
                        ?? Material.Load( "materials/dev/primary_white.vmat" );
 
-        // 4-vertex procedural quad with UVs [-1..1] for SDF raymarching
         _nodeModel = CreateProceduralQuadModel( material );
-
-        _transforms = new Transform[initialCapacity];
-        Bounds = new BBox( new Vector3( -100000, -100000, -100000 ), new Vector3( 100000, 100000, 100000 ) );
+        Bounds = new BBox( new Vector3( -200000, -200000, -200000 ), new Vector3( 200000, 200000, 200000 ) );
     }
 
     private static Model CreateProceduralQuadModel( Material material )
@@ -94,7 +90,6 @@ public sealed class GraphNodeSceneObject : SceneCustomObject
             ref readonly var spatial = ref spatials[i];
             Color baseCol = colors[i];
 
-            // Bits 0..3: Shape, Bit 4: Hover, Bit 5: Selected, Bit 6: Dimmed, Bit 7: Pinned
             byte flags = (byte)((byte)spatial.Shape & 0x0F);
             if ( spatial.IsHovered ) flags |= (1 << 4);
             if ( spatial.IsSelected ) flags |= (1 << 5);
@@ -110,6 +105,19 @@ public sealed class GraphNodeSceneObject : SceneCustomObject
         }
 
         _colorTexture.Update<Color32>( _colorStaging );
+    }
+
+    public void Render( GpuBuffer<GpuNodePhysicsData>? nodesBuffer, float nodeScale )
+    {
+        if ( _count == 0 || _nodeModel == null || _colorTexture == null || !_colorTexture.IsValid ) return;
+        if ( nodesBuffer == null || !nodesBuffer.IsValid ) return;
+
+        _renderAttributes.Set( "g_tColors", _colorTexture );
+        _renderAttributes.Set( "NodesBuffer", nodesBuffer );
+        _renderAttributes.Set( "NodeSizeScale", nodeScale );
+
+        // Direct VRAM Instanced Draw (0 transforms uploaded from CPU!)
+        Graphics.DrawModelInstanced( _nodeModel, _count, _renderAttributes );
     }
 
     public override void RenderSceneObject()

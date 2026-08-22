@@ -75,7 +75,7 @@ public static class GraphCanvasAdapter
             Vector2 spiralPos = new( r * MathF.Cos( phi ), r * MathF.Sin( phi ) );
 
             ushort zLevel = (ushort)Math.Clamp( (int)MathF.Log2( degree + 1 ), 0, 16 );
-            float radius = 6.0f + MathF.Sqrt( degree ) * 1.0f; // x for more hitbox
+            float radius = 6.0f + MathF.Sqrt( degree ) * 1.0f;
 
             NodeSpatialData spatial = new()
             {
@@ -106,7 +106,7 @@ public static class GraphCanvasAdapter
             idToIndexMap[gn.Id] = idx;
         }
 
-        // 3. Allocate Edges
+        // 3. Allocate Edges with dynamic patterns
         foreach ( var gn in matchingNodes )
         {
             if ( !idToIndexMap.TryGetValue( gn.Id, out int srcIdx ) ) continue;
@@ -132,11 +132,28 @@ public static class GraphCanvasAdapter
             }
         }
 
-        canvas.Physics.InitializeBuffers( canvas.Registry, canvas.Edges );
         canvas.SyncGpuBuffers();
         canvas.Physics.Reheat( 1.0f );
         canvas.Update();
     }
+
+    public static NodeShape GetCategoryShape( SandboxTypeCategory category ) => category switch
+    {
+        SandboxTypeCategory.SceneComponent => NodeShape.RoundedBox,
+        SandboxTypeCategory.Interface => NodeShape.Hexagon,
+        SandboxTypeCategory.Enum => NodeShape.Diamond,
+        SandboxTypeCategory.GameResource => NodeShape.Ring,
+        _ => NodeShape.Circle
+    };
+
+    public static (EdgeStyle Style, float Speed) GetRelationStyle( RelationKind kind ) => kind switch
+    {
+        RelationKind.Inherits or RelationKind.Implements => (EdgeStyle.DirectionalArrows, 1.2f),
+        RelationKind.EventSubscription => (EdgeStyle.LaserPulse, 2.0f),
+        RelationKind.Instantiates => (EdgeStyle.Dashed, 1.0f),
+        RelationKind.RazorMarkupTag => (EdgeStyle.DoubleLine, 0.0f),
+        _ => (EdgeStyle.Solid, 0.0f)
+    };
 
     public static string GetCategoryIcon( SandboxTypeCategory category ) => category switch
     {
@@ -177,23 +194,5 @@ public static class GraphCanvasAdapter
         RelationKind.EventSubscription => new Color( 0.68f, 0.38f, 0.95f, 0.8f ),
         RelationKind.Instantiates => new Color( 0.18f, 0.80f, 0.44f, 0.7f ),
         _ => new Color( 0.35f, 0.42f, 0.55f, 0.45f )
-    };
-
-    public static (EdgeStyle Style, float Speed) GetRelationStyle( RelationKind kind ) => kind switch
-    {
-        RelationKind.Inherits or RelationKind.Implements => (EdgeStyle.DirectionalArrows, 1.2f),
-        RelationKind.EventSubscription => (EdgeStyle.LaserPulse, 2.0f),
-        RelationKind.Instantiates => (EdgeStyle.Dashed, 1.0f),
-        RelationKind.RazorMarkupTag => (EdgeStyle.DoubleLine, 0.0f),
-        _ => (EdgeStyle.Solid, 0.0f)
-    };
-
-    public static NodeShape GetCategoryShape( SandboxTypeCategory category ) => category switch
-    {
-        SandboxTypeCategory.SceneComponent => NodeShape.RoundedBox,
-        SandboxTypeCategory.Interface => NodeShape.Hexagon,
-        SandboxTypeCategory.Enum => NodeShape.Diamond,
-        SandboxTypeCategory.GameResource => NodeShape.Ring,
-        _ => NodeShape.Circle
     };
 }

@@ -69,7 +69,7 @@ PS
         float finalAlpha = baseColor.a;
         float3 finalColor = baseColor.rgb;
 
-        // 1. DASHED
+        // 1. DASHED (- - - -)
         if (style > 0.5 && style < 1.5)
         {
             float dash = frac(u * 16.0 - g_flTime * speed * 2.0);
@@ -77,7 +77,7 @@ PS
                 discard;
             finalAlpha = max(0.7, baseColor.a);
         }
-        // 2. CHEVRON ARROWS
+        // 2. CHEVRON ARROWS (> > > >)
         else if (style > 1.5 && style < 2.5)
         {
             float cell = frac(u * 6.0 - g_flTime * speed * 1.5);
@@ -92,7 +92,7 @@ PS
             if (isArrow > 0.5)
                 finalColor = lerp(baseColor.rgb, float3(1.0, 1.0, 1.0), 0.55);
         }
-        // 3. DOUBLE LINE
+        // 3. DOUBLE LINE (= = = =)
         else if (style > 2.5 && style < 3.5)
         {
             if (crossDist < 0.35)

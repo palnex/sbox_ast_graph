@@ -124,7 +124,6 @@ public sealed class GraphEdgeSceneObject : IDisposable, Sandbox.IValid
             Array.Resize( ref _indices, Math.Max( _indices.Length * 2, requiredIndices ) );
         }
 
-        // Reallocate GPU buffers only when capacity is exceeded
         if ( _mesh == null || requiredVertices > _allocatedVertCapacity || requiredIndices > _allocatedIndCapacity )
         {
             RecreateMesh( Math.Max( requiredVertices, _allocatedVertCapacity * 2 ), Math.Max( requiredIndices, _allocatedIndCapacity * 2 ) );
@@ -172,7 +171,6 @@ public sealed class GraphEdgeSceneObject : IDisposable, Sandbox.IValid
 
         if ( _mesh != null && vertIdx > 0 )
         {
-            // Ultra-fast in-place DMA memory stream into existing VBO/IBO
             _mesh.SetVertexBufferData( _vertices.AsSpan( 0, vertIdx ) );
             _mesh.SetIndexBufferData( _indices.AsSpan( 0, indIdx ) );
             _mesh.SetIndexRange( 0, indIdx );

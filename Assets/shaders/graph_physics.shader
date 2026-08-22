@@ -1,6 +1,6 @@
 HEADER
 {
-    Description = "Exact Force-Directed GPU Graph Physics Solver Kernel";
+    Description = "Atomic Multi-Pass Zero-Copy Graph Physics Kernel";
     Version = 1;
 }
 
@@ -25,6 +25,8 @@ COMMON
         float DesiredDistance;
         float SpringStrength;
     };
+
+#define FIXED_SCALE 10000.0f
 
     float g_flDeltaTime < Attribute("DeltaTime");
     > ;
@@ -59,6 +61,8 @@ COMMON
     StructuredBuffer<NodePhysicsData> NodesIn < Attribute("NodesIn");
     > ;
     StructuredBuffer<EdgePhysicsData> EdgesIn < Attribute("EdgesIn");
+    > ;
+    RWStructuredBuffer<int> ForceAccum < Attribute("ForceAccum");
     > ;
     RWStructuredBuffer<NodePhysicsData> NodesOut < Attribute("NodesOut");
     > ;

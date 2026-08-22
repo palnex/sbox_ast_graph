@@ -48,7 +48,7 @@ public sealed class ArchitectureVisualizerDock : Widget
 
     private void BuildUI()
     {
-        // 1. Full GPU Canvas
+        // 1. Native GPU Viewport Canvas
         _canvas = Layout.Add( new CanvasWidget( this ), 1 );
 
         _canvas.OnNodeSelected += idx =>
@@ -72,7 +72,7 @@ public sealed class ArchitectureVisualizerDock : Widget
             }
         };
 
-        // 2. Floating Top HUD
+        // 2. Floating Top Search & Scope HUD
         _topHud = new CanvasTopHud( _canvas );
         _topHud.FilterUserOnly = _filters.UserCodeOnly;
         _topHud.IncludeSystemPrimitives = _filters.IncludeSystemPrimitives;
@@ -191,5 +191,4 @@ public sealed class ArchitectureVisualizerDock : Widget
         OnResize();
         Update();
     }
-
 }

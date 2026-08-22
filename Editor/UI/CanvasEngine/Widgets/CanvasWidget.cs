@@ -12,25 +12,27 @@ using Sandbox;
 
 namespace ArchitectureVisualizer.UI.CanvasEngine.Widgets;
 
-
 /// <summary>
-/// GPU-accelerated Graph Canvas Widget rendering isolated SceneWorld and SceneCamera onto Editor.Widget.
+/// High-Performance Zero-Copy Graph Canvas Widget rendering directly to Native GPU Swapchain via SceneRenderingWidget.
 /// </summary>
-public class CanvasWidget : Widget, IDisposable
+public class CanvasWidget : SceneRenderingWidget, IDisposable
 {
+    private Scene _scene = null!;
     private SceneWorld _sceneWorld = null!;
-    private SceneCamera _camera = null!;
+    private GameObject _cameraObject = null!;
+    private CameraComponent _camera = null!;
     public GraphCameraController CameraController { get; private set; } = null!;
 
     private GraphNodeSceneObject _nodeObject = null!;
     private GraphEdgeSceneObject _edgeObject = null!;
 
-    // Staging arrays for zero-allocation GPU synchronization
     private Transform[] _nodeTransformsStaging = new Transform[2048];
     private Color[] _nodeColorsStaging = new Color[2048];
+    private (Vector3 Start, Vector3 End, Color32 Color, EdgeStyle Style, float Speed)[] _edgeStaging = new (Vector3, Vector3, Color32, EdgeStyle, float)[8192];
+
     public CanvasTheme Theme { get; set; } = CanvasTheme.DefaultDark;
     public SpatialRegistry Registry { get; } = new();
-    public GpuPhysicsSolver Physics { get; } = new();
+    public SleepyPhysicsSolver Physics { get; } = new();
     public List<CanvasEdge> Edges { get; } = new();
 
     public int SelectedNodeIndex { get; private set; } = -1;
@@ -53,7 +55,6 @@ public class CanvasWidget : Widget, IDisposable
 
     private readonly FloatingInspectorOverlay _inspectorOverlay;
 
-    private (Vector3 Start, Vector3 End, Color32 Color, EdgeStyle Style, float Speed)[] _edgeStaging = new (Vector3, Vector3, Color32, EdgeStyle, float)[8192];
     public CanvasWidget( Widget parent ) : base( parent )
     {
         FocusMode = FocusMode.Click;
@@ -80,18 +81,21 @@ public class CanvasWidget : Widget, IDisposable
 
     private void InitScene()
     {
-        _sceneWorld = new SceneWorld();
-        _camera = new SceneCamera( "GraphCanvasCamera" )
-        {
-            World = _sceneWorld,
-            ZNear = 1.0f,
-            ZFar = 200000.0f,
-            AntiAliasing = true,
-            BackgroundColor = Theme.BackgroundColor,
-            AmbientLightColor = Color.White
-        };
+        _scene = new Scene();
+        _sceneWorld = _scene.SceneWorld;
 
-        CameraController = new GraphCameraController( _camera );
+        _cameraObject = _scene.CreateObject();
+        _camera = _cameraObject.Components.Create<CameraComponent>();
+        _camera.ZNear = 1.0f;
+        _camera.ZFar = 200000.0f;
+        _camera.FieldOfView = 60.0f;
+        _camera.BackgroundColor = Theme.BackgroundColor;
+
+        Scene = _scene;
+        Camera = _camera;
+        EnableEngineOverlays = false;
+
+        CameraController = new GraphCameraController( _camera, _cameraObject );
 
         _nodeObject = new GraphNodeSceneObject( _sceneWorld );
         _edgeObject = new GraphEdgeSceneObject( _sceneWorld );
@@ -179,19 +183,21 @@ public class CanvasWidget : Widget, IDisposable
 
         float dt = RealTime.Delta;
 
-        Vector2 dragWorldPos = Vector2.Zero;
-        if ( _draggedNodeIndex >= 0 )
+        if ( _isDraggingNode && _draggedNodeIndex >= 0 && _draggedNodeIndex < Registry.Count )
         {
-            Vector3? worldPlaneHit = CameraController.GetWorldPosOnPlane( _lastMousePos );
+            Vector3? worldPlaneHit = CameraController.GetWorldPosOnPlane( GetRay( _lastMousePos ) );
             if ( worldPlaneHit.HasValue )
             {
-                dragWorldPos = new Vector2( worldPlaneHit.Value.x, worldPlaneHit.Value.y );
+                ref var draggedSpatial = ref Registry.GetSpatialRef( _draggedNodeIndex );
+                Vector3 target = worldPlaneHit.Value - _dragOffset;
+                draggedSpatial.Position = new Vector2( target.x, target.y );
+                draggedSpatial.Velocity = Vector2.Zero;
             }
         }
 
         if ( !Physics.IsSleeping && (!Physics.PauseDuringPlay || !Game.IsPlaying) )
         {
-            Physics.Step( Registry, dt, Theme.NodeSizeScale, _draggedNodeIndex, dragWorldPos );
+            Physics.Step( Registry, Edges, dt, Theme.NodeSizeScale );
             SyncGpuBuffers();
             UpdateFloatingCardPosition();
             Update();
@@ -220,7 +226,7 @@ public class CanvasWidget : Widget, IDisposable
         var spatials = Registry.GetReadOnlySpatialSpan();
         bool hasFocus = HoveredNodeIndex >= 0 || SelectedNodeIndex >= 0;
 
-        // 1. Synchronize Nodes
+        // 1. Nodes
         for ( int i = 0; i < nodeCount; i++ )
         {
             ref readonly var node = ref spatials[i];
@@ -233,6 +239,8 @@ public class CanvasWidget : Widget, IDisposable
 
             Vector3 pos = GetNodeWorldPosition3D( i );
             float baseRadius = MathF.Max( 4.0f, node.Radius * Theme.NodeSizeScale );
+            float scale = baseRadius / 10.0f;
+            if ( node.IsSelected || node.IsHovered ) scale *= 1.35f;
 
             bool inFocus = !hasFocus || i == SelectedNodeIndex || i == HoveredNodeIndex || _focusedNeighbors.Contains( i );
             var payload = Registry.GetPayload( i );
@@ -241,26 +249,15 @@ public class CanvasWidget : Widget, IDisposable
                         node.IsHovered ? Theme.HoverColor :
                         payload.AccentColor;
 
-            if ( !inFocus )
-                col = col.WithAlpha( 0.15f );
-
-            // Node scale calibrated against 10-unit procedural circle model
-            float scale = baseRadius / 10.0f;
-            if ( node.IsSelected || node.IsHovered ) scale *= 1.35f;
+            if ( !inFocus ) col = col.WithAlpha( 0.15f );
 
             _nodeTransformsStaging[i] = new Transform( pos, Rotation.Identity, scale );
             _nodeColorsStaging[i] = col;
         }
 
-        if ( Physics.CurrentNodesBuffer != null && Physics.CurrentNodesBuffer.IsValid )
-        {
-            _nodeObject.RenderAttributes.Set( "NodesBuffer", Physics.CurrentNodesBuffer );
-            _nodeObject.RenderAttributes.Set( "NodeSizeScale", Theme.NodeSizeScale );
-        }
-
         _nodeObject.UpdateNodes( _nodeTransformsStaging.AsSpan( 0, nodeCount ), spatials, _nodeColorsStaging.AsSpan( 0, nodeCount ) );
 
-        // 2. Synchronize Edges with safety bounds
+        // 2. Edges
         int validEdgeCount = 0;
         for ( int i = 0; i < edgeCount; i++ )
         {
@@ -289,7 +286,7 @@ public class CanvasWidget : Widget, IDisposable
             _edgeStaging[validEdgeCount++] = (p0, p1, (Color32)edgeCol, edge.Style, edge.FlowSpeed);
         }
 
-        float edgeThickness = MathF.Max( 1.2f, 2.0f * Theme.LinkThicknessScale );
+        float edgeThickness = MathF.Max( 1.5f, 2.5f * Theme.LinkThicknessScale );
         _edgeObject.UploadEdges( _edgeStaging.AsSpan( 0, validEdgeCount ), edgeThickness );
     }
 
@@ -299,7 +296,8 @@ public class CanvasWidget : Widget, IDisposable
             return;
 
         Vector3 worldPos = GetNodeWorldPosition3D( SelectedNodeIndex );
-        Vector2 screenAnchor = _camera.ToScreen( worldPos );
+        Vector2 screenNorm = _camera.PointToScreenNormal( worldPos );
+        Vector2 screenAnchor = screenNorm * Size;
 
         Vector2 targetPos = screenAnchor + new Vector2( 24, -30 );
 
@@ -313,23 +311,14 @@ public class CanvasWidget : Widget, IDisposable
     protected override void OnResize()
     {
         base.OnResize();
-        if ( _camera != null ) _camera.Size = Size;
         UpdateFloatingCardPosition();
         Update();
     }
 
     protected override void OnPaint()
     {
-        int w = (int)MathF.Max( 1, Size.x );
-        int h = (int)MathF.Max( 1, Size.y );
-        _camera.Size = Size;
-
-        // 1. Render isolated 3D GPU Scene
-        var pixmap = new Pixmap( w, h );
-        if ( _camera.RenderToPixmap( pixmap ) )
-        {
-            Paint.Draw( LocalRect, pixmap );
-        }
+        // 1. Native GPU Scene rendered directly via Swapchain!
+        base.OnPaint();
 
         // 2. Background Grid Overlay
         if ( Theme.ShowGrid && !CameraController.Is3DMode )
@@ -350,7 +339,8 @@ public class CanvasWidget : Widget, IDisposable
         if ( step < 12f ) return;
 
         Vector2 screenCenter = Size * 0.5f;
-        Vector2 screenOffset = _camera.ToScreen( Vector3.Zero ) - screenCenter;
+        Vector2 screenNorm = _camera.PointToScreenNormal( Vector3.Zero );
+        Vector2 screenOffset = (screenNorm * Size) - screenCenter;
 
         float startX = (screenCenter.x + screenOffset.x) % step;
         float startY = (screenCenter.y + screenOffset.y) % step;
@@ -369,7 +359,6 @@ public class CanvasWidget : Widget, IDisposable
     {
         if ( _camera == null ) return;
 
-        bool hasFocus = HoveredNodeIndex >= 0 || SelectedNodeIndex >= 0;
         var spatials = Registry.GetReadOnlySpatialSpan();
         int count = spatials.Length;
 
@@ -385,10 +374,10 @@ public class CanvasWidget : Widget, IDisposable
 
             Vector3 worldPos = GetNodeWorldPosition3D( i ) + new Vector3( 0, -node.Radius * Theme.NodeSizeScale - 8f, 0 );
 
-            if ( CameraController.Is3DMode && Vector3.Dot( _camera.Rotation.Forward, worldPos - _camera.Position ) <= 0 )
+            if ( CameraController.Is3DMode && Vector3.Dot( _cameraObject.WorldRotation.Forward, worldPos - _cameraObject.WorldPosition ) <= 0 )
                 continue;
 
-            Vector2 screenPos = _camera.ToScreen( worldPos );
+            Vector2 screenPos = _camera.PointToScreenNormal( worldPos ) * Size;
 
             if ( screenPos.x < -80 || screenPos.x > Size.x + 80 || screenPos.y < -40 || screenPos.y > Size.y + 40 )
                 continue;
@@ -433,13 +422,13 @@ public class CanvasWidget : Widget, IDisposable
 
         if ( e.LeftMouseButton )
         {
-            int targetIdx = PickNodeFromRay( _camera.GetRay( e.LocalPosition ) );
+            int targetIdx = PickNodeFromRay( GetRay( e.LocalPosition ) );
 
             if ( targetIdx >= 0 )
             {
                 _draggedNodeIndex = targetIdx;
                 Vector3 nodeWorld = GetNodeWorldPosition3D( targetIdx );
-                Vector3? planeHit = CameraController.GetWorldPosOnPlane( e.LocalPosition );
+                Vector3? planeHit = CameraController.GetWorldPosOnPlane( GetRay( e.LocalPosition ) );
                 _dragOffset = (planeHit ?? nodeWorld) - nodeWorld;
                 _dragStartMouse = e.LocalPosition;
                 _isDraggingNode = false;
@@ -463,7 +452,7 @@ public class CanvasWidget : Widget, IDisposable
 
         if ( _isPanning )
         {
-            CameraController.Pan( delta );
+            CameraController.Pan( delta, Size );
             UpdateFloatingCardPosition();
             Update();
             return;
@@ -488,7 +477,7 @@ public class CanvasWidget : Widget, IDisposable
 
             if ( _isDraggingNode )
             {
-                Vector3? worldPlaneHit = CameraController.GetWorldPosOnPlane( e.LocalPosition );
+                Vector3? worldPlaneHit = CameraController.GetWorldPosOnPlane( GetRay( e.LocalPosition ) );
                 if ( worldPlaneHit.HasValue )
                 {
                     ref var draggedSpatial = ref Registry.GetSpatialRef( _draggedNodeIndex );
@@ -504,7 +493,7 @@ public class CanvasWidget : Widget, IDisposable
             }
         }
 
-        int hovered = PickNodeFromRay( _camera.GetRay( e.LocalPosition ) );
+        int hovered = PickNodeFromRay( GetRay( e.LocalPosition ) );
         if ( HoveredNodeIndex != hovered )
         {
             if ( HoveredNodeIndex >= 0 && HoveredNodeIndex < Registry.Count )
@@ -566,7 +555,7 @@ public class CanvasWidget : Widget, IDisposable
 
     protected override void OnDoubleClick( MouseEvent e )
     {
-        int idx = PickNodeFromRay( _camera.GetRay( e.LocalPosition ) );
+        int idx = PickNodeFromRay( GetRay( e.LocalPosition ) );
         if ( idx >= 0 )
         {
             OnNodeDoubleClicked?.Invoke( idx );
@@ -576,7 +565,7 @@ public class CanvasWidget : Widget, IDisposable
 
     protected override void OnContextMenu( ContextMenuEvent e )
     {
-        int idx = PickNodeFromRay( _camera.GetRay( e.LocalPosition ) );
+        int idx = PickNodeFromRay( GetRay( e.LocalPosition ) );
         var menu = new Menu( this );
 
         if ( idx >= 0 )
@@ -689,17 +678,8 @@ public class CanvasWidget : Widget, IDisposable
     {
         _edgeObject?.Dispose();
         _nodeObject?.Dispose();
-        Physics?.Dispose();
-
-        if ( _camera != null )
-        {
-            _camera.Dispose();
-        }
-
-        if ( _sceneWorld.IsValid() )
-        {
-            _sceneWorld.Delete();
-        }
+        _cameraObject?.Destroy();
+        _scene?.Clear();
     }
 }
 

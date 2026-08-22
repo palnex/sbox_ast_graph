@@ -28,7 +28,7 @@ public struct GpuEdgePhysicsData
 }
 
 /// <summary>
-/// GPU-accelerated Force-Directed physics solver running 100% on Compute Shaders.
+/// GPU-accelerated Force-Directed physics solver running 100% on Compute Shaders in VRAM.
 /// </summary>
 public sealed class GpuPhysicsSolver : IDisposable
 {
@@ -36,11 +36,14 @@ public sealed class GpuPhysicsSolver : IDisposable
     private GpuBuffer<GpuNodePhysicsData>? _nodesBufferA;
     private GpuBuffer<GpuNodePhysicsData>? _nodesBufferB;
     private GpuBuffer<GpuEdgePhysicsData>? _edgesBuffer;
-    public GpuBuffer<GpuNodePhysicsData>? CurrentNodesBuffer => _nodesBufferA;
+
     private GpuNodePhysicsData[] _hostNodes = Array.Empty<GpuNodePhysicsData>();
     private GpuEdgePhysicsData[] _hostEdges = Array.Empty<GpuEdgePhysicsData>();
     private int _nodeCount = 0;
     private int _edgeCount = 0;
+
+    public GpuBuffer<GpuNodePhysicsData>? CurrentNodesBuffer => _nodesBufferA;
+    public GpuBuffer<GpuEdgePhysicsData>? EdgesBuffer => _edgesBuffer;
 
     public float Alpha { get; private set; } = 1.0f;
     public float AlphaTarget { get; set; } = 0.0f;
@@ -170,7 +173,7 @@ public sealed class GpuPhysicsSolver : IDisposable
         _computeShader.Attributes.Set( "EdgesIn", _edgesBuffer );
         _computeShader.Attributes.Set( "NodesOut", _nodesBufferB );
 
-        // 3. Dispatch GPU Compute Kernel (All threads)
+        // 3. Dispatch GPU Compute Kernel (All threads in VRAM!)
         _computeShader.Dispatch( _nodeCount, 1, 1 );
 
         // 4. Ping-Pong Buffers in VRAM
@@ -178,7 +181,7 @@ public sealed class GpuPhysicsSolver : IDisposable
         _nodesBufferA = _nodesBufferB;
         _nodesBufferB = temp;
 
-        // 5. Sync positions to SpatialRegistry so edges and mouse hit-testing move together!
+        // 5. Read back into SpatialRegistry for edges & mouse hit-testing
         _nodesBufferA.GetData( _hostNodes, 0, _nodeCount );
         var liveSpatials = registry.GetSpatialSpan();
 

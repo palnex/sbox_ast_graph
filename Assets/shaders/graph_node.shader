@@ -1,6 +1,6 @@
 HEADER
 {
-    Description = "Zero-Copy GPU Instanced Multi-Shape SDF Node Shader";
+    Description = "GPU Instanced Multi-Shape SDF Node Shader";
     Version = 1;
 }
 
@@ -18,21 +18,6 @@ MODES
 COMMON
 {
 #include "common/shared.hlsl"
-
-    struct NodePhysicsData
-    {
-        float2 Position;
-        float2 Velocity;
-        float Radius;
-        float Mass;
-        uint Flags;
-        uint TotalDegree;
-    };
-
-    StructuredBuffer<NodePhysicsData> _Nodes < Attribute("NodesBuffer");
-    > ;
-    float g_flNodeSizeScale < Attribute("NodeSizeScale");
-    > ;
 }
 
 struct VertexInput
@@ -45,8 +30,8 @@ struct PixelInput
 {
 #include "common/pixelinput.hlsl"
     float4 vColor : COLOR0;
-    float4 vNodeParams : TEXCOORD8;
-    float2 vLocalPos : TEXCOORD9;
+    float4 vNodeParams : TEXCOORD8; // x: ShapeID, y: IsHovered, z: IsSelected, w: IsDimmed
+    float2 vLocalPos : TEXCOORD9;   // Local Quad coordinates [-1..1]
 };
 
 VS
@@ -60,18 +45,7 @@ VS
     {
         PixelInput o = ProcessVertex(i);
 
-        // 1. Fetch node world position directly from GPU VRAM
-        NodePhysicsData node = _Nodes[i.nInstanceId];
-
-        // 2. Position Quad with dynamic UI slider scale
-        float scale = max(0.2, g_flNodeSizeScale);
-        float nodeRadius = max(3.0, node.Radius * scale);
-        float3 worldPos = float3(node.Position.x, node.Position.y, 0.0);
-        worldPos.xy += (i.vTexCoord.xy * 2.0 - 1.0) * nodeRadius;
-
-        o.vPositionPs = Position3WsToPs(worldPos);
-
-        // 3. Texture color & flags
+        // 1. Texture color & flags
         uint texWidth = 512;
         int3 texCoord = int3((int)(i.nInstanceId % texWidth), (int)(i.nInstanceId / texWidth), 0);
         float4 rawTexel = g_tColors.Load(texCoord);
