@@ -28,7 +28,7 @@ public struct GpuEdgePhysicsData
 }
 
 /// <summary>
-/// GPU-accelerated Force-Directed physics solver running 100% on Compute Shaders in VRAM.
+/// GPU-accelerated Atomic Force-Directed physics solver running 100% on Compute Shaders.
 /// </summary>
 public sealed class GpuPhysicsSolver : IDisposable
 {
@@ -36,6 +36,7 @@ public sealed class GpuPhysicsSolver : IDisposable
     private GpuBuffer<GpuNodePhysicsData>? _nodesBufferA;
     private GpuBuffer<GpuNodePhysicsData>? _nodesBufferB;
     private GpuBuffer<GpuEdgePhysicsData>? _edgesBuffer;
+    private GpuBuffer<int>? _accumForcesBuffer;
 
     private GpuNodePhysicsData[] _hostNodes = Array.Empty<GpuNodePhysicsData>();
     private GpuEdgePhysicsData[] _hostEdges = Array.Empty<GpuEdgePhysicsData>();
@@ -126,10 +127,12 @@ public sealed class GpuPhysicsSolver : IDisposable
         _nodesBufferA?.Dispose();
         _nodesBufferB?.Dispose();
         _edgesBuffer?.Dispose();
+        _accumForcesBuffer?.Dispose();
 
         _nodesBufferA = new GpuBuffer<GpuNodePhysicsData>( _nodeCount, GpuBuffer.UsageFlags.Structured );
         _nodesBufferB = new GpuBuffer<GpuNodePhysicsData>( _nodeCount, GpuBuffer.UsageFlags.Structured );
         _edgesBuffer = new GpuBuffer<GpuEdgePhysicsData>( Math.Max( 1, _edgeCount ), GpuBuffer.UsageFlags.Structured );
+        _accumForcesBuffer = new GpuBuffer<int>( Math.Max( 1, _nodeCount * 2 ), GpuBuffer.UsageFlags.Structured );
 
         _nodesBufferA.SetData( _hostNodes.AsSpan( 0, _nodeCount ) );
         _nodesBufferB.SetData( _hostNodes.AsSpan( 0, _nodeCount ) );
@@ -140,7 +143,7 @@ public sealed class GpuPhysicsSolver : IDisposable
     public void Step( SpatialRegistry registry, float dt, float nodeSizeScale, int draggedIndex = -1, Vector2 dragPos = default )
     {
         if ( _nodeCount == 0 || _computeShader == null ) return;
-        if ( _nodesBufferA == null || !_nodesBufferA.IsValid || _nodesBufferB == null || !_nodesBufferB.IsValid ) return;
+        if ( _nodesBufferA == null || !_nodesBufferA.IsValid || _nodesBufferB == null || !_nodesBufferB.IsValid || _accumForcesBuffer == null || !_accumForcesBuffer.IsValid ) return;
 
         if ( draggedIndex >= 0 )
         {
@@ -155,7 +158,7 @@ public sealed class GpuPhysicsSolver : IDisposable
         // 2. Set Attributes
         _computeShader.Attributes.Set( "DeltaTime", dt );
         _computeShader.Attributes.Set( "Alpha", Alpha );
-        _computeShader.Attributes.Set( "RepelConstant", RepulsionConstant );
+        _computeShader.Attributes.Set( "RepulsionStrength", RepulsionConstant );
         _computeShader.Attributes.Set( "RepelMaxDist", RepulsionMaxDist );
         _computeShader.Attributes.Set( "LinkDistance", LinkDistanceSetting );
         _computeShader.Attributes.Set( "LinkForce", LinkForceSetting );
@@ -163,17 +166,34 @@ public sealed class GpuPhysicsSolver : IDisposable
         _computeShader.Attributes.Set( "Damping", Damping );
         _computeShader.Attributes.Set( "TerminalSpeed", TerminalVelocity );
         _computeShader.Attributes.Set( "NodeSizeScale", nodeSizeScale );
-        _computeShader.Attributes.Set( "NodeCount", (uint)_nodeCount );
-        _computeShader.Attributes.Set( "EdgeCount", (uint)_edgeCount );
+        _computeShader.Attributes.Set( "NumNodes", (uint)_nodeCount );
+        _computeShader.Attributes.Set( "NumEdges", (uint)_edgeCount );
 
-        _computeShader.Attributes.Set( "DragIndex", draggedIndex );
-        _computeShader.Attributes.Set( "DragPos", dragPos );
+        _computeShader.Attributes.Set( "DraggedNodeId", draggedIndex );
+        _computeShader.Attributes.Set( "DragTargetPos", dragPos );
 
-        _computeShader.Attributes.Set( "NodesIn", _nodesBufferA );
-        _computeShader.Attributes.Set( "EdgesIn", _edgesBuffer );
-        _computeShader.Attributes.Set( "NodesOut", _nodesBufferB );
+        _computeShader.Attributes.Set( "InNodes", _nodesBufferA );
+        _computeShader.Attributes.Set( "InEdges", _edgesBuffer );
+        _computeShader.Attributes.Set( "AccumForces", _accumForcesBuffer );
+        _computeShader.Attributes.Set( "OutNodes", _nodesBufferB );
 
-        // 3. Dispatch GPU Compute Kernel (All threads in VRAM!)
+        // ==========================================
+        // 3. THREE-STAGE ATOMIC GPU DISPATCH
+        // ==========================================
+
+        // Pass 0: Zero out accumulation buffer (1 thread per node)
+        _computeShader.Attributes.Set( "PassMode", 0 );
+        _computeShader.Dispatch( _nodeCount, 1, 1 );
+
+        // Pass 1: Atomic springs evaluation (1 thread per edge -> O(E)!)
+        if ( _edgeCount > 0 )
+        {
+            _computeShader.Attributes.Set( "PassMode", 1 );
+            _computeShader.Dispatch( _edgeCount, 1, 1 );
+        }
+
+        // Pass 2: Repulsion, gravity & integration (1 thread per node)
+        _computeShader.Attributes.Set( "PassMode", 2 );
         _computeShader.Dispatch( _nodeCount, 1, 1 );
 
         // 4. Ping-Pong Buffers in VRAM
@@ -181,7 +201,7 @@ public sealed class GpuPhysicsSolver : IDisposable
         _nodesBufferA = _nodesBufferB;
         _nodesBufferB = temp;
 
-        // 5. Read back into SpatialRegistry for edges & mouse hit-testing
+        // 5. Direct Readback into SpatialRegistry
         _nodesBufferA.GetData( _hostNodes, 0, _nodeCount );
         var liveSpatials = registry.GetSpatialSpan();
 
@@ -197,8 +217,10 @@ public sealed class GpuPhysicsSolver : IDisposable
         _nodesBufferA?.Dispose();
         _nodesBufferB?.Dispose();
         _edgesBuffer?.Dispose();
+        _accumForcesBuffer?.Dispose();
         _nodesBufferA = null;
         _nodesBufferB = null;
         _edgesBuffer = null;
+        _accumForcesBuffer = null;
     }
 }

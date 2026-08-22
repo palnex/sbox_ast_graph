@@ -1,6 +1,5 @@
 #nullable enable
 using System;
-using ArchitectureVisualizer.UI.CanvasEngine.Core;
 using ArchitectureVisualizer.UI.CanvasEngine.Models;
 using Sandbox;
 using Sandbox.Rendering;
@@ -8,7 +7,7 @@ using Sandbox.Rendering;
 namespace ArchitectureVisualizer.UI.CanvasEngine.Rendering;
 
 /// <summary>
-/// Zero-Copy GPU SDF node renderer drawing instances directly from VRAM buffers.
+/// GPU SDF node renderer using procedural quads and VAT byte-packed texture.
 /// </summary>
 public sealed class GraphNodeSceneObject : SceneCustomObject
 {
@@ -16,9 +15,9 @@ public sealed class GraphNodeSceneObject : SceneCustomObject
     private readonly Texture _colorTexture;
     private readonly RenderAttributes _renderAttributes = new();
     private readonly Color32[] _colorStaging = new Color32[512 * 512];
+    private Transform[] _transforms = new Transform[4096];
     private int _count = 0;
 
-    private Transform[] _transforms = new Transform[4096];
     public RenderAttributes RenderAttributes => _renderAttributes;
 
     public GraphNodeSceneObject( SceneWorld world ) : base( world )
@@ -105,19 +104,6 @@ public sealed class GraphNodeSceneObject : SceneCustomObject
         }
 
         _colorTexture.Update<Color32>( _colorStaging );
-    }
-
-    public void Render( GpuBuffer<GpuNodePhysicsData>? nodesBuffer, float nodeScale )
-    {
-        if ( _count == 0 || _nodeModel == null || _colorTexture == null || !_colorTexture.IsValid ) return;
-        if ( nodesBuffer == null || !nodesBuffer.IsValid ) return;
-
-        _renderAttributes.Set( "g_tColors", _colorTexture );
-        _renderAttributes.Set( "NodesBuffer", nodesBuffer );
-        _renderAttributes.Set( "NodeSizeScale", nodeScale );
-
-        // Direct VRAM Instanced Draw (0 transforms uploaded from CPU!)
-        Graphics.DrawModelInstanced( _nodeModel, _count, _renderAttributes );
     }
 
     public override void RenderSceneObject()
