@@ -55,9 +55,9 @@ public sealed class SleepyPhysicsSolver
         // 2. Build Barnes-Hut QuadTree
         _quadTree.Build( registry );
 
-        // 3. Compute Many-Body Repulsion
+        // 3. Compute Many-Body Repulsion (Barnes-Hut)
         float scaledRepelDist = RepulsionMaxDist * MathF.Max( 1.0f, nodeSizeScale * 0.75f );
-        float repelPower = RepulsionConstant * 14.0f;
+        float repelPower = RepulsionConstant * 12.0f;
 
         Parallel.For( 0, nodeCount, i =>
         {
@@ -66,9 +66,7 @@ public sealed class SleepyPhysicsSolver
 
             float targetMass = registry.GetPayload( i ).PhysicsMass;
             Vector2 repulsion = _quadTree.ComputeRepulsion( i, node.Position, targetMass, repelPower, maxDist: scaledRepelDist );
-
-            // Apply full kinetic repulsion
-            node.Velocity += repulsion * (Alpha * dt);
+            node.Velocity += repulsion * (Alpha * 0.016f);
         } );
 
         // NOTE (Phase 5 Roadmap): Add relation-based link strength weighting (Edge Weighting by RelationKind)
@@ -97,20 +95,22 @@ public sealed class SleepyPhysicsSolver
 
             float combinedRadii = (src.Radius + dst.Radius) * nodeSizeScale;
             float targetDistance = LinkDistanceSetting + (combinedRadii * 0.85f);
-            float displacement = (dist - targetDistance);
+            float displacement = dist - targetDistance;
+            float invDist = 1.0f / dist;
 
-            // Responsive elastic spring force with Drag Boost and Hub normalization
-            float springCoeff = (src.IsPinned || dst.IsPinned) ? 0.45f : (0.22f * degreeDamping);
+            // Powerful drag elasticity: when dragging a node, pull its neighbors with full kinetic force!
+            bool isBeingDragged = src.IsPinned || dst.IsPinned;
+            float springCoeff = isBeingDragged ? 0.65f : (0.24f * degreeDamping);
             float strength = (LinkForceSetting * springCoeff) * Alpha;
-            Vector2 springForce = (delta / dist) * (displacement * strength);
+            Vector2 springForce = delta * (invDist * displacement * strength);
 
             if ( src.IsPinned && !dst.IsPinned )
             {
-                dst.Velocity -= springForce;
+                dst.Velocity -= springForce * 1.5f; // Extra responsive drag pull!
             }
             else if ( !src.IsPinned && dst.IsPinned )
             {
-                src.Velocity += springForce;
+                src.Velocity += springForce * 1.5f;
             }
             else if ( !src.IsPinned && !dst.IsPinned )
             {

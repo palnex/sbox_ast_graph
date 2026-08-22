@@ -41,6 +41,13 @@ public sealed class BarnesHutQuadTree
         int count = registry.Count;
         if ( count == 0 ) return;
 
+        // Ensure cells buffer has enough capacity (8x node count for deep quadtree trees)
+        int minRequired = Math.Max( count * 8, 8192 );
+        if ( _cells.Length < minRequired )
+        {
+            Array.Resize( ref _cells, minRequired );
+        }
+
         var spatials = registry.GetReadOnlySpatialSpan();
 
         // 1. Calculate World Enclosing Bounds
@@ -59,7 +66,7 @@ public sealed class BarnesHutQuadTree
             if ( p.y > maxY ) maxY = p.y;
         }
 
-        float size = MathF.Max( maxX - minX, maxY - minY ) + 60f;
+        float size = MathF.Max( maxX - minX, maxY - minY ) + 80f;
         float halfSize = size * 0.5f;
         Vector2 center = new( (minX + maxX) * 0.5f, (minY + maxY) * 0.5f );
 
@@ -88,17 +95,15 @@ public sealed class BarnesHutQuadTree
         }
 
         int idx = _cellCount++;
-        _cells[idx] = new QuadCell
-        {
-            Bounds = bounds,
-            CenterOfMass = Vector2.Zero,
-            TotalMass = 0f,
-            NodeIndex = -1,
-            ChildNW = -1,
-            ChildNE = -1,
-            ChildSW = -1,
-            ChildSE = -1
-        };
+        _cells[idx].Bounds = bounds;
+        _cells[idx].CenterOfMass = Vector2.Zero;
+        _cells[idx].TotalMass = 0f;
+        _cells[idx].NodeIndex = -1;
+        _cells[idx].ChildNW = -1;
+        _cells[idx].ChildNE = -1;
+        _cells[idx].ChildSW = -1;
+        _cells[idx].ChildSE = -1;
+
         return idx;
     }
 

@@ -7,13 +7,14 @@ using Sandbox;
 namespace ArchitectureVisualizer.UI.Floating;
 
 /// <summary>
-/// Floating semi-transparent HUD menu for Display settings and live Physics tuning.
+/// Floating semi-transparent HUD menu for Display settings, 2D/3D toggling, and live Physics tuning.
 /// </summary>
 public sealed class CanvasForcesHud : Widget
 {
     private readonly CanvasWidget _canvas;
     private readonly Widget _contentPanel;
     private bool _isOpen = false;
+    private Button? _modeBtn;
 
     public CanvasForcesHud( CanvasWidget canvas ) : base( canvas )
     {
@@ -69,14 +70,29 @@ public sealed class CanvasForcesHud : Widget
         var theme = _canvas.Theme;
         var p = _canvas.Physics;
 
+        // ================= VIEWPORT MODE =================
+        var viewHeader = _contentPanel.Layout.Add( new Label( "CAMERA VIEWPORT", _contentPanel ) );
+        viewHeader.SetStyles( "color: #58a6ff; font-weight: bold; font-size: 10px; margin-top: 2px;" );
+
+        _modeBtn = _contentPanel.Layout.Add( new Button( "Switch to 3D Orbit 🪐", "3d_rotation", _contentPanel ) );
+        _modeBtn.FixedHeight = 24;
+        _modeBtn.Clicked = () =>
+        {
+            _canvas.CameraController.ToggleMode();
+            _modeBtn.Text = _canvas.CameraController.Is3DMode ? "Switch to 2D Ortho 📄" : "Switch to 3D Orbit 🪐";
+            _canvas.SyncGpuBuffers();
+            _canvas.Update();
+        };
+
         // ================= DISPLAY SECTION =================
-        var displayHeader = _contentPanel.Layout.Add( new Label( "DISPLAY", _contentPanel ) );
-        displayHeader.SetStyles( "color: #58a6ff; font-weight: bold; font-size: 10px; margin-top: 2px;" );
+        var displayHeader = _contentPanel.Layout.Add( new Label( "DISPLAY SCALE", _contentPanel ) );
+        displayHeader.SetStyles( "color: #58a6ff; font-weight: bold; font-size: 10px; margin-top: 6px;" );
 
         // 1. Node Size Scale
-        AddSlider( "Node Size", 0.4f, 10.0f, theme.NodeSizeScale, val =>
+        AddSlider( "Node Size", 0.4f, 8.0f, theme.NodeSizeScale, val =>
         {
             theme.NodeSizeScale = val;
+            _canvas.SyncGpuBuffers();
             _canvas.Physics.Reheat( 0.40f );
             _canvas.Update();
         } );
@@ -85,13 +101,7 @@ public sealed class CanvasForcesHud : Widget
         AddSlider( "Link Thickness", 0.2f, 4.0f, theme.LinkThicknessScale, val =>
         {
             theme.LinkThicknessScale = val;
-            _canvas.Update();
-        } );
-
-        // 3. Text Fade Threshold
-        AddSlider( "Text Fade Zoom", 0.2f, 1.8f, theme.TextFadeThreshold, val =>
-        {
-            theme.TextFadeThreshold = val;
+            _canvas.SyncGpuBuffers();
             _canvas.Update();
         } );
 

@@ -1,0 +1,167 @@
+#nullable enable
+using System;
+using Sandbox;
+
+namespace ArchitectureVisualizer.UI.CanvasEngine.Core;
+
+/// <summary>
+/// Flexible 2D Orthographic and 3D Orbit Camera Controller for SceneCamera.
+/// </summary>
+public sealed class GraphCameraController
+{
+    private readonly SceneCamera _camera;
+
+    public bool Is3DMode { get; private set; } = false;
+
+    private float _orthoSize = 2500.0f;
+    private float _orbitDistance = 2500.0f;
+    private Angles _orbitAngles = new( 45, -45, 0 );
+    private Vector3 _focalPoint = Vector3.Zero;
+
+    // Smooth animation targets
+    private Vector3 _targetFocalPoint = Vector3.Zero;
+    private float _targetOrthoSize = 2500.0f;
+    private float _targetOrbitDistance = 2500.0f;
+    private bool _isAnimating = false;
+
+    public SceneCamera Camera => _camera;
+    public Vector3 FocalPoint => _focalPoint;
+    public float OrthoSize => _orthoSize;
+
+    public GraphCameraController( SceneCamera camera )
+    {
+        _camera = camera;
+        _targetFocalPoint = _focalPoint;
+        _targetOrthoSize = _orthoSize;
+        _targetOrbitDistance = _orbitDistance;
+
+        Set2DMode();
+    }
+
+    public void Set2DMode()
+    {
+        Is3DMode = false;
+        _camera.Ortho = true;
+        _camera.OrthoHeight = _orthoSize;
+        _camera.Angles = new Angles( 90, -90, 0 ); // Looking down at Z plane
+        _camera.Position = _focalPoint + Vector3.Up * 10000.0f;
+    }
+
+    public void Set3DMode()
+    {
+        Is3DMode = true;
+        _camera.Ortho = false;
+        _camera.FieldOfView = 60.0f;
+        UpdateOrbitTransform();
+    }
+
+    public void ToggleMode()
+    {
+        if ( Is3DMode ) Set2DMode();
+        else Set3DMode();
+    }
+
+    public void Pan( Vector2 screenDeltaPixels )
+    {
+        _isAnimating = false;
+
+        if ( !Is3DMode )
+        {
+            float unitsPerPixel = _orthoSize / MathF.Max( 1f, _camera.Size.y );
+            _focalPoint += new Vector3( screenDeltaPixels.x * unitsPerPixel, -screenDeltaPixels.y * unitsPerPixel, 0 );
+            _targetFocalPoint = _focalPoint;
+            _camera.Position = _focalPoint + Vector3.Up * 10000.0f;
+        }
+        else
+        {
+            var right = _camera.Rotation.Right;
+            var up = _camera.Rotation.Up;
+            float factor = (_orbitDistance / MathF.Max( 1f, _camera.Size.y ));
+            _focalPoint += (-right * screenDeltaPixels.x + up * screenDeltaPixels.y) * factor;
+            _targetFocalPoint = _focalPoint;
+            UpdateOrbitTransform();
+        }
+    }
+
+    public void Orbit( Vector2 mouseDelta )
+    {
+        if ( !Is3DMode ) return;
+
+        _isAnimating = false;
+        _orbitAngles.pitch = Math.Clamp( _orbitAngles.pitch + mouseDelta.y * 0.35f, 5.0f, 89.0f );
+        _orbitAngles.yaw -= mouseDelta.x * 0.35f;
+        UpdateOrbitTransform();
+    }
+
+    public void Zoom( float deltaWheel )
+    {
+        _isAnimating = false;
+        float factor = deltaWheel > 0 ? 0.85f : 1.15f;
+
+        if ( !Is3DMode )
+        {
+            _orthoSize = Math.Clamp( _orthoSize * factor, 200.0f, 60000.0f );
+            _targetOrthoSize = _orthoSize;
+            _camera.OrthoHeight = _orthoSize;
+        }
+        else
+        {
+            _orbitDistance = Math.Clamp( _orbitDistance * factor, 100.0f, 60000.0f );
+            _targetOrbitDistance = _orbitDistance;
+            UpdateOrbitTransform();
+        }
+    }
+
+    public void AnimateTo( Vector3 targetWorldPos, float targetSize = 2000f )
+    {
+        _targetFocalPoint = targetWorldPos;
+        _targetOrthoSize = Math.Clamp( targetSize, 200.0f, 60000.0f );
+        _targetOrbitDistance = Math.Clamp( targetSize, 100.0f, 60000.0f );
+        _isAnimating = true;
+    }
+
+    public void UpdateAnimation( float dt )
+    {
+        if ( !_isAnimating ) return;
+
+        float t = 1.0f - MathF.Exp( -14.0f * dt );
+
+        _focalPoint = Vector3.Lerp( _focalPoint, _targetFocalPoint, t );
+        _orthoSize = MathX.Lerp( _orthoSize, _targetOrthoSize, t );
+        _orbitDistance = MathX.Lerp( _orbitDistance, _targetOrbitDistance, t );
+
+        if ( (_focalPoint - _targetFocalPoint).Length < 0.5f && MathF.Abs( _orthoSize - _targetOrthoSize ) < 1.0f )
+        {
+            _focalPoint = _targetFocalPoint;
+            _orthoSize = _targetOrthoSize;
+            _orbitDistance = _targetOrbitDistance;
+            _isAnimating = false;
+        }
+
+        if ( !Is3DMode )
+        {
+            _camera.OrthoHeight = _orthoSize;
+            _camera.Position = _focalPoint + Vector3.Up * 10000.0f;
+        }
+        else
+        {
+            UpdateOrbitTransform();
+        }
+    }
+
+    private void UpdateOrbitTransform()
+    {
+        _camera.Rotation = Rotation.From( _orbitAngles );
+        _camera.Position = _focalPoint + _camera.Rotation.Backward * _orbitDistance;
+    }
+
+    /// <summary>
+    /// Projects a screen ray onto the horizontal plane (Z = planeHeight) to find the world position.
+    /// </summary>
+    public Vector3? GetWorldPosOnPlane( Vector2 screenPixels, float planeHeight = 0f )
+    {
+        Ray ray = _camera.GetRay( screenPixels );
+        Plane plane = new( new Vector3( 0, 0, planeHeight ), Vector3.Up );
+        return plane.Trace( ray, twosided: true );
+    }
+}

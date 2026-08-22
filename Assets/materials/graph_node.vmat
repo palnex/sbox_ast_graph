@@ -1,0 +1,10 @@
+// THIS FILE IS AUTO-GENERATED
+
+Layer0
+{
+	shader "shaders/graph_node.shader"
+
+	//---- Rendering ----
+	F_DO_NOT_CAST_SHADOWS 1
+	F_RENDER_BACKFACES 1
+}

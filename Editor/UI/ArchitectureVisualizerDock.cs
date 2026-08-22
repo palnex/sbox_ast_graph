@@ -14,7 +14,7 @@ using Sandbox;
 namespace ArchitectureVisualizer.UI;
 
 /// <summary>
-/// Main full-window canvas architecture visualizer dock.
+/// Main full-window GPU architecture visualizer dock.
 /// </summary>
 [Dock( "Editor", "Architecture Visualizer", "schema" )]
 public sealed class ArchitectureVisualizerDock : Widget
@@ -32,8 +32,6 @@ public sealed class ArchitectureVisualizerDock : Widget
         MaxNodesToLoad = 30000
     };
 
-    private Vector2 _savedPan = Vector2.Zero;
-    private float _savedZoom = 1.0f;
     private string? _savedSelectedId;
 
     public ArchitectureVisualizerDock( Widget parent ) : base( parent )
@@ -50,10 +48,8 @@ public sealed class ArchitectureVisualizerDock : Widget
 
     private void BuildUI()
     {
-        // 1. Full Canvas
+        // 1. Full GPU Canvas
         _canvas = Layout.Add( new CanvasWidget( this ), 1 );
-        _canvas.Transform.PanOffset = _savedPan;
-        _canvas.Transform.Zoom = _savedZoom;
 
         _canvas.OnNodeSelected += idx =>
         {
@@ -157,6 +153,7 @@ public sealed class ArchitectureVisualizerDock : Widget
                     spatial.SetFlag( NodeFlags.Pinned, state.Pinned );
                 }
             }
+            _canvas.SyncGpuBuffers();
             _canvas.Physics.Reheat( 0.20f );
         }
 
@@ -186,11 +183,7 @@ public sealed class ArchitectureVisualizerDock : Widget
 
     private void RebuildOnHotload()
     {
-        if ( _canvas != null )
-        {
-            _savedPan = _canvas.Transform.PanOffset;
-            _savedZoom = _canvas.Transform.Zoom;
-        }
+        _canvas?.Dispose();
 
         Layout.Clear( true );
         BuildUI();
@@ -198,4 +191,5 @@ public sealed class ArchitectureVisualizerDock : Widget
         OnResize();
         Update();
     }
+
 }

@@ -4,14 +4,31 @@ using System;
 namespace ArchitectureVisualizer.UI.CanvasEngine.Models;
 
 /// <summary>
-/// Defines the geometric shape used for rendering and analytical hit-testing.
+/// Geometric analytical shapes supported by the GPU SDF node shader.
 /// </summary>
 public enum NodeShape : byte
 {
     Circle = 0,
     Box = 1,
-    Pill = 2,
-    Custom = 3
+    RoundedBox = 2,
+    Hexagon = 3,
+    Diamond = 4,
+    Ring = 5,
+    Star = 6,
+    CustomMesh = 100
+}
+
+/// <summary>
+/// Visual and animation patterns for dynamic graph connections.
+/// </summary>
+public enum EdgeStyle : byte
+{
+    Solid = 0,
+    Dashed = 1,
+    DirectionalArrows = 2,
+    DoubleLine = 3,
+    LaserPulse = 4,
+    Custom = 100
 }
 
 /// <summary>

@@ -2,7 +2,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-
 using Editor.Core;
 using Editor.Core.Models;
 using ArchitectureVisualizer.UI.CanvasEngine.Core;
@@ -13,17 +12,26 @@ using Sandbox;
 
 namespace ArchitectureVisualizer.UI.CanvasEngine.Widgets;
 
+
 /// <summary>
-/// Data-oriented interactive 2D Canvas Widget featuring world-anchored inspection and Z-level picking.
+/// GPU-accelerated Graph Canvas Widget rendering isolated SceneWorld and SceneCamera onto Editor.Widget.
 /// </summary>
-public class CanvasWidget : Widget
+public class CanvasWidget : Widget, IDisposable
 {
-    public CanvasTransform Transform { get; } = new();
+    private SceneWorld _sceneWorld = null!;
+    private SceneCamera _camera = null!;
+    public GraphCameraController CameraController { get; private set; } = null!;
+
+    private GraphNodeSceneObject _nodeObject = null!;
+    private GraphEdgeSceneObject _edgeObject = null!;
+
+    // Staging arrays for zero-allocation GPU synchronization
+    private Transform[] _nodeTransformsStaging = new Transform[2048];
+    private Color[] _nodeColorsStaging = new Color[2048];
     public CanvasTheme Theme { get; set; } = CanvasTheme.DefaultDark;
     public SpatialRegistry Registry { get; } = new();
     public SleepyPhysicsSolver Physics { get; } = new();
     public List<CanvasEdge> Edges { get; } = new();
-    public GraphCanvasRenderer Renderer { get; } = new();
 
     public int SelectedNodeIndex { get; private set; } = -1;
     public int HoveredNodeIndex { get; private set; } = -1;
@@ -31,29 +39,21 @@ public class CanvasWidget : Widget
     public event Action<int>? OnNodeSelected;
     public event Action<int>? OnNodeDoubleClicked;
 
-    // Smooth Camera
-    private Vector2 _targetPan;
-    private float _targetZoom = 1.0f;
-    private bool _isAnimatingCamera;
-
-    // Focus / Neighbors Cache
     private readonly HashSet<int> _focusedNeighbors = new();
 
-    // Interaction & Drag State
     private bool _isPanning;
-    private Vector2 _panStartMouse;
-    private Vector2 _panStartOffset;
+    private bool _isOrbiting;
+    private Vector2 _lastMousePos;
 
     private int _draggedNodeIndex = -1;
-    private Vector2 _dragOffset;
+    private Vector3 _dragOffset;
     private Vector2 _dragStartMouse;
-    private Vector2 _currentMouseWorldPos;
     private bool _isDraggingNode;
     private bool _dragNodeWasPinnedOriginally;
 
-    // World-Anchored Floating Inspector Card
     private readonly FloatingInspectorOverlay _inspectorOverlay;
 
+    private (Vector3 Start, Vector3 End, Color32 Color, EdgeStyle Style, float Speed)[] _edgeStaging = new (Vector3, Vector3, Color32, EdgeStyle, float)[8192];
     public CanvasWidget( Widget parent ) : base( parent )
     {
         FocusMode = FocusMode.Click;
@@ -61,10 +61,8 @@ public class CanvasWidget : Widget
         AcceptDrops = true;
         MouseTracking = true;
 
-        _targetPan = Transform.PanOffset;
-        _targetZoom = Transform.Zoom;
+        InitScene();
 
-        // Floating inspection card anchored to selected node in world space
         _inspectorOverlay = new FloatingInspectorOverlay( this );
         _inspectorOverlay.Visible = false;
         _inspectorOverlay.OnNavigateRequested += targetId =>
@@ -73,11 +71,30 @@ public class CanvasWidget : Widget
             {
                 if ( Registry.GetPayload( i ).Id == targetId )
                 {
-                    FocusOnNode( i, zoom: 1.3f );
+                    FocusOnNode( i, targetSize: 1500f );
                     break;
                 }
             }
         };
+    }
+
+    private void InitScene()
+    {
+        _sceneWorld = new SceneWorld();
+        _camera = new SceneCamera( "GraphCanvasCamera" )
+        {
+            World = _sceneWorld,
+            ZNear = 1.0f,
+            ZFar = 200000.0f,
+            AntiAliasing = true,
+            BackgroundColor = Theme.BackgroundColor,
+            AmbientLightColor = Color.White
+        };
+
+        CameraController = new GraphCameraController( _camera );
+
+        _nodeObject = new GraphNodeSceneObject( _sceneWorld );
+        _edgeObject = new GraphEdgeSceneObject( _sceneWorld );
     }
 
     public void Clear()
@@ -89,23 +106,17 @@ public class CanvasWidget : Widget
         _draggedNodeIndex = -1;
         _focusedNeighbors.Clear();
         _inspectorOverlay.Visible = false;
+
+        SyncGpuBuffers();
         Update();
     }
 
-    public void FocusOnNode( int nodeIndex, float zoom = 1.3f )
+    public void FocusOnNode( int nodeIndex, float targetSize = 1500f )
     {
         if ( nodeIndex < 0 || nodeIndex >= Registry.Count ) return;
-        Vector2 pos = Registry.GetSpatialRef( nodeIndex ).Position;
-        AnimateTo( pos, zoom );
+        Vector3 pos = GetNodeWorldPosition3D( nodeIndex );
+        CameraController.AnimateTo( pos, targetSize );
         SelectNode( nodeIndex );
-    }
-
-    public void AnimateTo( Vector2 targetWorldPos, float targetZoom = 1.2f )
-    {
-        _targetZoom = Math.Clamp( targetZoom, Transform.MinZoom, Transform.MaxZoom );
-        _targetPan = -targetWorldPos * _targetZoom;
-        _isAnimatingCamera = true;
-        Update();
     }
 
     public void SelectNode( int nodeIndex )
@@ -130,6 +141,7 @@ public class CanvasWidget : Widget
         }
 
         RebuildFocusedNeighbors();
+        SyncGpuBuffers();
         UpdateFloatingCardPosition();
         OnNodeSelected?.Invoke( SelectedNodeIndex );
         Update();
@@ -149,57 +161,144 @@ public class CanvasWidget : Widget
         }
     }
 
+    public Vector3 GetNodeWorldPosition3D( int nodeIndex )
+    {
+        ref readonly var spatial = ref Registry.GetSpatialRef( nodeIndex );
+        float z = CameraController.Is3DMode ? (spatial.ZLevel * 45.0f) : 0f;
+        return new Vector3( spatial.Position.x, spatial.Position.y, z );
+    }
+
     [EditorEvent.Frame]
     public void FrameTick()
     {
-        // 1. If currently dragging a node, continuously lock its position to the mouse
+        if ( !IsValid || _camera == null || CameraController == null || _sceneWorld == null || !_sceneWorld.IsValid() )
+            return;
+
+        if ( _nodeObject == null || !_nodeObject.IsValid() || _edgeObject == null || !_edgeObject.IsValid() )
+            return;
+
+        float dt = RealTime.Delta;
+
         if ( _isDraggingNode && _draggedNodeIndex >= 0 && _draggedNodeIndex < Registry.Count )
         {
-            ref var draggedSpatial = ref Registry.GetSpatialRef( _draggedNodeIndex );
-            draggedSpatial.Position = _currentMouseWorldPos - _dragOffset;
-            draggedSpatial.Velocity = Vector2.Zero; // Prevent physics from pushing it away
+            Vector3? worldPlaneHit = CameraController.GetWorldPosOnPlane( _lastMousePos );
+            if ( worldPlaneHit.HasValue )
+            {
+                ref var draggedSpatial = ref Registry.GetSpatialRef( _draggedNodeIndex );
+                Vector3 target = worldPlaneHit.Value - _dragOffset;
+                draggedSpatial.Position = new Vector2( target.x, target.y );
+                draggedSpatial.Velocity = Vector2.Zero;
+            }
         }
 
-        // 2. Step Physics if active
         if ( !Physics.IsSleeping && (!Physics.PauseDuringPlay || !Game.IsPlaying) )
         {
-            Physics.Step( Registry, Edges, RealTime.Delta, Theme.NodeSizeScale );
+            Physics.Step( Registry, Edges, dt, Theme.NodeSizeScale );
+            SyncGpuBuffers();
             UpdateFloatingCardPosition();
             Update();
         }
 
-        // 3. Smooth Camera Animation
-        if ( _isAnimatingCamera )
+        CameraController.UpdateAnimation( dt );
+    }
+
+    public void SyncGpuBuffers()
+    {
+        int nodeCount = Registry.Count;
+        int edgeCount = Edges.Count;
+
+        if ( _nodeTransformsStaging.Length < nodeCount )
         {
-            float dt = RealTime.Delta;
-            float t = 1.0f - MathF.Exp( -12.0f * dt );
+            int newCap = Math.Max( _nodeTransformsStaging.Length * 2, nodeCount );
+            Array.Resize( ref _nodeTransformsStaging, newCap );
+            Array.Resize( ref _nodeColorsStaging, newCap );
+        }
 
-            Transform.PanOffset = Vector2.Lerp( Transform.PanOffset, _targetPan, t );
-            Transform.Zoom = MathX.Lerp( Transform.Zoom, _targetZoom, t );
+        if ( _edgeStaging.Length < edgeCount )
+        {
+            Array.Resize( ref _edgeStaging, Math.Max( _edgeStaging.Length * 2, edgeCount ) );
+        }
 
-            if ( (Transform.PanOffset - _targetPan).Length < 0.1f && MathF.Abs( Transform.Zoom - _targetZoom ) < 0.001f )
+        var spatials = Registry.GetReadOnlySpatialSpan();
+        bool hasFocus = HoveredNodeIndex >= 0 || SelectedNodeIndex >= 0;
+
+        // 1. Synchronize Nodes
+        for ( int i = 0; i < nodeCount; i++ )
+        {
+            ref readonly var node = ref spatials[i];
+            if ( node.IsHidden )
             {
-                Transform.PanOffset = _targetPan;
-                Transform.Zoom = _targetZoom;
-                _isAnimatingCamera = false;
+                _nodeTransformsStaging[i] = new Transform( new Vector3( 0, 0, -999999 ), Rotation.Identity, 0.001f );
+                _nodeColorsStaging[i] = Color.Transparent;
+                continue;
             }
 
-            UpdateFloatingCardPosition();
-            Update();
+            Vector3 pos = GetNodeWorldPosition3D( i );
+            float baseRadius = MathF.Max( 4.0f, node.Radius * Theme.NodeSizeScale );
+
+            bool inFocus = !hasFocus || i == SelectedNodeIndex || i == HoveredNodeIndex || _focusedNeighbors.Contains( i );
+            var payload = Registry.GetPayload( i );
+
+            Color col = node.IsSelected ? Theme.SelectionColor :
+                        node.IsHovered ? Theme.HoverColor :
+                        payload.AccentColor;
+
+            if ( !inFocus )
+                col = col.WithAlpha( 0.15f );
+
+            // Node scale calibrated against 10-unit procedural circle model
+            float scale = baseRadius / 10.0f;
+            if ( node.IsSelected || node.IsHovered ) scale *= 1.35f;
+
+            _nodeTransformsStaging[i] = new Transform( pos, Rotation.Identity, scale );
+            _nodeColorsStaging[i] = col;
         }
+
+        _nodeObject.UpdateNodes( _nodeTransformsStaging.AsSpan( 0, nodeCount ), spatials, _nodeColorsStaging.AsSpan( 0, nodeCount ) );
+
+        // 2. Synchronize Edges with safety bounds
+        int validEdgeCount = 0;
+        for ( int i = 0; i < edgeCount; i++ )
+        {
+            var edge = Edges[i];
+            if ( edge.SourceIndex < 0 || edge.SourceIndex >= spatials.Length ||
+                 edge.TargetIndex < 0 || edge.TargetIndex >= spatials.Length )
+            {
+                continue;
+            }
+
+            ref readonly var src = ref spatials[edge.SourceIndex];
+            ref readonly var dst = ref spatials[edge.TargetIndex];
+
+            if ( src.IsHidden || dst.IsHidden ) continue;
+
+            Vector3 p0 = GetNodeWorldPosition3D( edge.SourceIndex );
+            Vector3 p1 = GetNodeWorldPosition3D( edge.TargetIndex );
+
+            bool isEdgeFocused = !hasFocus || (edge.SourceIndex == SelectedNodeIndex || edge.TargetIndex == SelectedNodeIndex ||
+                                               edge.SourceIndex == HoveredNodeIndex || edge.TargetIndex == HoveredNodeIndex);
+
+            Color edgeCol = isEdgeFocused
+                ? (src.IsSelected || dst.IsSelected ? Theme.SelectionColor : Theme.HoverColor).WithAlpha( 0.85f )
+                : (edge.CustomColor ?? Theme.DefaultEdgeColor).WithAlpha( 0.35f );
+
+            _edgeStaging[validEdgeCount++] = (p0, p1, (Color32)edgeCol, edge.Style, edge.FlowSpeed);
+        }
+
+        float edgeThickness = MathF.Max( 1.2f, 2.0f * Theme.LinkThicknessScale );
+        _edgeObject.UploadEdges( _edgeStaging.AsSpan( 0, validEdgeCount ), edgeThickness );
     }
 
     private void UpdateFloatingCardPosition()
     {
-        if ( !_inspectorOverlay.Visible || SelectedNodeIndex < 0 || SelectedNodeIndex >= Registry.Count )
+        if ( !_inspectorOverlay.Visible || SelectedNodeIndex < 0 || SelectedNodeIndex >= Registry.Count || _camera == null )
             return;
 
-        Vector2 worldPos = Registry.GetSpatialRef( SelectedNodeIndex ).Position;
-        Vector2 screenAnchor = Transform.WorldToScreen( worldPos );
+        Vector3 worldPos = GetNodeWorldPosition3D( SelectedNodeIndex );
+        Vector2 screenAnchor = _camera.ToScreen( worldPos );
 
-        Vector2 targetPos = screenAnchor + new Vector2( 22, -30 );
+        Vector2 targetPos = screenAnchor + new Vector2( 24, -30 );
 
-        // Clamping inside Dock borders
         float pad = 12f;
         float clampedX = Math.Clamp( targetPos.x, pad, MathF.Max( pad, Width - _inspectorOverlay.Width - pad ) );
         float clampedY = Math.Clamp( targetPos.y, pad, MathF.Max( pad, Height - _inspectorOverlay.Height - pad ) );
@@ -210,46 +309,50 @@ public class CanvasWidget : Widget
     protected override void OnResize()
     {
         base.OnResize();
-        Transform.ViewportSize = Size;
+        if ( _camera != null ) _camera.Size = Size;
         UpdateFloatingCardPosition();
         Update();
     }
 
     protected override void OnPaint()
     {
-        Transform.ViewportSize = Size;
-        Rect visibleWorldRect = Transform.GetVisibleWorldRect( margin: 120f );
+        int w = (int)MathF.Max( 1, Size.x );
+        int h = (int)MathF.Max( 1, Size.y );
+        _camera.Size = Size;
 
-        PaintContext ctx = new( Transform, Theme, visibleWorldRect )
+        // 1. Render isolated 3D GPU Scene
+        var pixmap = new Pixmap( w, h );
+        if ( _camera.RenderToPixmap( pixmap ) )
         {
-            HoveredNodeIndex = HoveredNodeIndex,
-            SelectedNodeIndex = SelectedNodeIndex,
-            FocusedNeighborIndices = _focusedNeighbors
-        };
+            Paint.Draw( LocalRect, pixmap );
+        }
 
-        // 1. Background
-        Paint.ClearPen();
-        Paint.SetBrush( Theme.BackgroundColor );
-        Paint.DrawRect( LocalRect );
+        // 2. Background Grid Overlay
+        if ( Theme.ShowGrid && !CameraController.Is3DMode )
+        {
+            DrawGrid();
+        }
 
-        // 2. Grid
-        if ( Theme.ShowGrid ) DrawGrid();
-
-        // 3. Render Graph Pipeline
-        Renderer.Render( ctx, Registry, Edges );
+        // 3. Crisp Typography Overlay
+        RenderLabels();
     }
 
     private void DrawGrid()
     {
-        float step = Theme.GridStep * Transform.Zoom;
-        if ( step < 14f ) return;
+        if ( _camera == null ) return;
 
-        Vector2 center = Size * 0.5f;
-        float startX = (Transform.PanOffset.x + center.x) % step;
-        float startY = (Transform.PanOffset.y + center.y) % step;
+        float zoom = 2500.0f / MathF.Max( 100f, CameraController.OrthoSize );
+        float step = Theme.GridStep * zoom;
+        if ( step < 12f ) return;
+
+        Vector2 screenCenter = Size * 0.5f;
+        Vector2 screenOffset = _camera.ToScreen( Vector3.Zero ) - screenCenter;
+
+        float startX = (screenCenter.x + screenOffset.x) % step;
+        float startY = (screenCenter.y + screenOffset.y) % step;
 
         Paint.ClearBrush();
-        Paint.SetPen( Theme.GridColor, 1f );
+        Paint.SetPen( Theme.GridColor.WithAlpha( 0.05f ), 1f );
 
         for ( float x = startX; x < Size.x; x += step )
             Paint.DrawLine( new Vector2( x, 0 ), new Vector2( x, Size.y ) );
@@ -258,32 +361,82 @@ public class CanvasWidget : Widget
             Paint.DrawLine( new Vector2( 0, y ), new Vector2( Size.x, y ) );
     }
 
+    private void RenderLabels()
+    {
+        if ( _camera == null ) return;
+
+        bool hasFocus = HoveredNodeIndex >= 0 || SelectedNodeIndex >= 0;
+        var spatials = Registry.GetReadOnlySpatialSpan();
+        int count = spatials.Length;
+
+        for ( int i = 0; i < count; i++ )
+        {
+            ref readonly var node = ref spatials[i];
+            if ( node.IsHidden ) continue;
+
+            bool isPrimary = i == SelectedNodeIndex || i == HoveredNodeIndex;
+            bool isNeighbor = _focusedNeighbors.Contains( i );
+
+            if ( !isPrimary && !isNeighbor ) continue;
+
+            Vector3 worldPos = GetNodeWorldPosition3D( i ) + new Vector3( 0, -node.Radius * Theme.NodeSizeScale - 8f, 0 );
+
+            if ( CameraController.Is3DMode && Vector3.Dot( _camera.Rotation.Forward, worldPos - _camera.Position ) <= 0 )
+                continue;
+
+            Vector2 screenPos = _camera.ToScreen( worldPos );
+
+            if ( screenPos.x < -80 || screenPos.x > Size.x + 80 || screenPos.y < -40 || screenPos.y > Size.y + 40 )
+                continue;
+
+            var payload = Registry.GetPayload( i );
+            int fontSize = isPrimary ? 13 : 11;
+            Paint.SetFont( "Segoe UI", fontSize, isPrimary ? 700 : 500 );
+
+            var textRect = new Rect( screenPos.x - 100, screenPos.y, 200, 20 );
+
+            Paint.SetPen( Color.Black.WithAlpha( 0.85f ) );
+            Paint.DrawText( new Rect( textRect.Position + new Vector2( 1, 1 ), textRect.Size ), payload.Title, TextFlag.Center );
+
+            Color textColor = isPrimary ? Color.White : Theme.TextColor.WithAlpha( 0.90f );
+            Paint.SetPen( textColor );
+            Paint.DrawText( textRect, payload.Title, TextFlag.Center );
+        }
+    }
+
     protected override void OnMousePress( MouseEvent e )
     {
-        bool isPan = e.MiddleMouseButton || e.RightMouseButton || (e.LeftMouseButton && Editor.Application.KeyboardModifiers.HasFlag( Sandbox.KeyboardModifiers.Alt ));
+        _lastMousePos = e.LocalPosition;
+
+        bool isPan = e.MiddleMouseButton || (e.LeftMouseButton && Editor.Application.KeyboardModifiers.HasFlag( Sandbox.KeyboardModifiers.Alt ));
+        bool isOrbit = e.RightMouseButton;
+
         if ( isPan )
         {
             _isPanning = true;
-            _panStartMouse = e.LocalPosition;
-            _panStartOffset = Transform.PanOffset;
-            _isAnimatingCamera = false;
             Cursor = CursorShape.SizeAll;
+            e.Accepted = true;
+            return;
+        }
+
+        if ( isOrbit && CameraController.Is3DMode )
+        {
+            _isOrbiting = true;
+            Cursor = CursorShape.Cross;
             e.Accepted = true;
             return;
         }
 
         if ( e.LeftMouseButton )
         {
-            Vector2 worldPos = Transform.ScreenToWorld( e.LocalPosition );
-            _currentMouseWorldPos = worldPos;
-
-            // 100% Guarantee: If a node is currently hovered, select EXACTLY that node!
-            int targetIdx = HoveredNodeIndex >= 0 ? HoveredNodeIndex : Registry.PickNode( worldPos, Theme.NodeSizeScale );
+            int targetIdx = PickNodeFromRay( _camera.GetRay( e.LocalPosition ) );
 
             if ( targetIdx >= 0 )
             {
                 _draggedNodeIndex = targetIdx;
-                _dragOffset = worldPos - Registry.GetSpatialRef( targetIdx ).Position;
+                Vector3 nodeWorld = GetNodeWorldPosition3D( targetIdx );
+                Vector3? planeHit = CameraController.GetWorldPosOnPlane( e.LocalPosition );
+                _dragOffset = (planeHit ?? nodeWorld) - nodeWorld;
                 _dragStartMouse = e.LocalPosition;
                 _isDraggingNode = false;
                 _dragNodeWasPinnedOriginally = Registry.GetSpatialRef( targetIdx ).IsPinned;
@@ -301,13 +454,20 @@ public class CanvasWidget : Widget
 
     protected override void OnMouseMove( MouseEvent e )
     {
-        Vector2 worldPos = Transform.ScreenToWorld( e.LocalPosition );
-        _currentMouseWorldPos = worldPos;
+        Vector2 delta = e.LocalPosition - _lastMousePos;
+        _lastMousePos = e.LocalPosition;
 
         if ( _isPanning )
         {
-            Transform.PanOffset = _panStartOffset + (e.LocalPosition - _panStartMouse);
-            _targetPan = Transform.PanOffset;
+            CameraController.Pan( delta );
+            UpdateFloatingCardPosition();
+            Update();
+            return;
+        }
+
+        if ( _isOrbiting )
+        {
+            CameraController.Orbit( delta );
             UpdateFloatingCardPosition();
             Update();
             return;
@@ -315,30 +475,32 @@ public class CanvasWidget : Widget
 
         if ( _draggedNodeIndex >= 0 )
         {
-            // Check 5px threshold
-            if ( !_isDraggingNode )
+            if ( !_isDraggingNode && (e.LocalPosition - _dragStartMouse).Length >= 5.0f )
             {
-                if ( (e.LocalPosition - _dragStartMouse).Length >= 5.0f )
-                {
-                    _isDraggingNode = true;
-                    Registry.GetSpatialRef( _draggedNodeIndex ).SetFlag( NodeFlags.Pinned, true ); // Lock in physics
-                    Cursor = CursorShape.DragMove;
-                }
+                _isDraggingNode = true;
+                Registry.GetSpatialRef( _draggedNodeIndex ).SetFlag( NodeFlags.Pinned, true );
+                Cursor = CursorShape.DragMove;
             }
 
             if ( _isDraggingNode )
             {
-                Registry.GetSpatialRef( _draggedNodeIndex ).Position = worldPos - _dragOffset;
-                Registry.GetSpatialRef( _draggedNodeIndex ).Velocity = Vector2.Zero;
-                Physics.WakeUp();
-                UpdateFloatingCardPosition();
-                Update();
+                Vector3? worldPlaneHit = CameraController.GetWorldPosOnPlane( e.LocalPosition );
+                if ( worldPlaneHit.HasValue )
+                {
+                    ref var draggedSpatial = ref Registry.GetSpatialRef( _draggedNodeIndex );
+                    Vector3 target = worldPlaneHit.Value - _dragOffset;
+                    draggedSpatial.Position = new Vector2( target.x, target.y );
+                    draggedSpatial.Velocity = Vector2.Zero;
+                    Physics.WakeUp();
+                    SyncGpuBuffers();
+                    UpdateFloatingCardPosition();
+                    Update();
+                }
                 return;
             }
         }
 
-        // Hover Detection with correct NodeSizeScale
-        int hovered = Registry.PickNode( worldPos, Theme.NodeSizeScale );
+        int hovered = PickNodeFromRay( _camera.GetRay( e.LocalPosition ) );
         if ( HoveredNodeIndex != hovered )
         {
             if ( HoveredNodeIndex >= 0 && HoveredNodeIndex < Registry.Count )
@@ -350,6 +512,7 @@ public class CanvasWidget : Widget
                 Registry.GetSpatialRef( HoveredNodeIndex ).SetFlag( NodeFlags.Hovered, true );
 
             RebuildFocusedNeighbors();
+            SyncGpuBuffers();
             Cursor = HoveredNodeIndex >= 0 ? CursorShape.Finger : CursorShape.Arrow;
             Update();
         }
@@ -357,10 +520,12 @@ public class CanvasWidget : Widget
 
     protected override void OnMouseReleased( MouseEvent e )
     {
-        if ( _isPanning )
+        if ( _isPanning || _isOrbiting )
         {
             _isPanning = false;
+            _isOrbiting = false;
             Cursor = CursorShape.Arrow;
+            UpdateFloatingCardPosition();
             Update();
         }
 
@@ -368,7 +533,6 @@ public class CanvasWidget : Widget
         {
             bool wasActuallyDragged = _isDraggingNode;
 
-            // Restore original pin state if node wasn't pinned before drag
             if ( !_dragNodeWasPinnedOriginally )
             {
                 Registry.GetSpatialRef( _draggedNodeIndex ).SetFlag( NodeFlags.Pinned, false );
@@ -378,23 +542,19 @@ public class CanvasWidget : Widget
             _isDraggingNode = false;
             Cursor = HoveredNodeIndex >= 0 ? CursorShape.Finger : CursorShape.Arrow;
 
-            // Wake up physics ONLY if the user actually dragged the node past the threshold!
             if ( wasActuallyDragged )
             {
                 Physics.WakeUp();
             }
 
+            SyncGpuBuffers();
             Update();
         }
     }
 
     protected override void OnMouseWheel( WheelEvent e )
     {
-        _isAnimatingCamera = false;
-        float factor = e.Delta > 0 ? 1.15f : 0.85f;
-        Transform.ZoomAt( e.Position, factor );
-        _targetZoom = Transform.Zoom;
-        _targetPan = Transform.PanOffset;
+        CameraController.Zoom( e.Delta );
         UpdateFloatingCardPosition();
         Update();
         e.Accepted = true;
@@ -402,8 +562,7 @@ public class CanvasWidget : Widget
 
     protected override void OnDoubleClick( MouseEvent e )
     {
-        Vector2 worldPos = Transform.ScreenToWorld( e.LocalPosition );
-        int idx = Registry.PickNode( worldPos );
+        int idx = PickNodeFromRay( _camera.GetRay( e.LocalPosition ) );
         if ( idx >= 0 )
         {
             OnNodeDoubleClicked?.Invoke( idx );
@@ -413,9 +572,7 @@ public class CanvasWidget : Widget
 
     protected override void OnContextMenu( ContextMenuEvent e )
     {
-        Vector2 worldPos = Transform.ScreenToWorld( e.LocalPosition );
-        int idx = Registry.PickNode( worldPos );
-
+        int idx = PickNodeFromRay( _camera.GetRay( e.LocalPosition ) );
         var menu = new Menu( this );
 
         if ( idx >= 0 )
@@ -435,12 +592,13 @@ public class CanvasWidget : Widget
                 } );
             }
 
-            menu.AddOption( "Focus Camera", "my_location", () => FocusOnNode( idx, 1.4f ) );
+            menu.AddOption( "Focus Camera", "my_location", () => FocusOnNode( idx, 1500f ) );
 
             bool isPinned = Registry.GetSpatialRef( idx ).IsPinned;
             menu.AddOption( isPinned ? "Unpin Position" : "Pin in Place 📌", "push_pin", () =>
             {
                 Registry.GetSpatialRef( idx ).SetFlag( NodeFlags.Pinned, !isPinned );
+                SyncGpuBuffers();
                 Update();
             } );
 
@@ -449,12 +607,54 @@ public class CanvasWidget : Widget
         }
         else
         {
+            menu.AddOption( CameraController.Is3DMode ? "Switch to 2D Ortho" : "Switch to 3D Orbit 🪐", "3d_rotation", () =>
+            {
+                CameraController.ToggleMode();
+                SyncGpuBuffers();
+                Update();
+            } );
             menu.AddOption( "Fit All to Screen", "fit_screen", FitToScreen );
             menu.AddOption( "Reheat Physics 🔥", "bolt", () => { Physics.WakeUp(); Update(); } );
         }
 
         menu.OpenAtCursor();
         e.Accepted = true;
+    }
+
+    private int PickNodeFromRay( Ray ray )
+    {
+        int bestIdx = -1;
+        float bestDist = float.MaxValue;
+        var spatials = Registry.GetReadOnlySpatialSpan();
+
+        for ( int i = 0; i < spatials.Length; i++ )
+        {
+            ref readonly var node = ref spatials[i];
+            if ( node.IsHidden ) continue;
+
+            Vector3 center = GetNodeWorldPosition3D( i );
+            float radius = MathF.Max( 4.0f, node.Radius * Theme.NodeSizeScale ) * 1.25f;
+
+            Vector3 m = ray.Position - center;
+            float b = Vector3.Dot( m, ray.Forward );
+            float c = Vector3.Dot( m, m ) - (radius * radius);
+
+            if ( c > 0.0f && b > 0.0f ) continue;
+
+            float discr = b * b - c;
+            if ( discr < 0.0f ) continue;
+
+            float t = -b - MathF.Sqrt( discr );
+            if ( t < 0.0f ) t = 0.0f;
+
+            if ( t < bestDist )
+            {
+                bestDist = t;
+                bestIdx = i;
+            }
+        }
+
+        return bestIdx;
     }
 
     public void FitToScreen()
@@ -475,20 +675,31 @@ public class CanvasWidget : Widget
             if ( p.y > maxY ) maxY = p.y;
         }
 
-        Vector2 center = new( (minX + maxX) * 0.5f, (minY + maxY) * 0.5f );
-        float spanX = (maxX - minX) + 160f;
-        float spanY = (maxY - minY) + 160f;
+        Vector3 center = new( (minX + maxX) * 0.5f, (minY + maxY) * 0.5f, 0 );
+        float span = MathF.Max( maxX - minX, maxY - minY ) + 400f;
 
-        float zoomX = Size.x / spanX;
-        float zoomY = Size.y / spanY;
-        float fitZoom = Math.Clamp( MathF.Min( zoomX, zoomY ), Transform.MinZoom, 1.2f );
+        CameraController.AnimateTo( center, span );
+    }
 
-        AnimateTo( center, fitZoom );
+    public void Dispose()
+    {
+        _edgeObject?.Dispose();
+        _nodeObject?.Dispose();
+
+        if ( _camera != null )
+        {
+            _camera.Dispose();
+        }
+
+        if ( _sceneWorld.IsValid() )
+        {
+            _sceneWorld.Delete();
+        }
     }
 }
 
 /// <summary>
-/// Lightweight floating inspection card anchored to the active node in world space.
+/// Floating inspection card anchored to the selected node in world space.
 /// </summary>
 public sealed class FloatingInspectorOverlay : Widget
 {
