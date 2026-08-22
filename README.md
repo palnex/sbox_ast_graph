@@ -1,5 +1,21 @@
 # SboxAstGraph
 
+
+> **MAJOR UPDATE: Migrated to Native S&box Editor Library & GPU Visualizer Engine!**
+> 
+> The project has evolved from a standalone CLI utility into a **high-performance, native S&box Editor Library (`.sbproj`)**. 
+> It now features live in-memory `Sandbox.TypeLibrary` and Roslyn AST integration, real-time 3D Orbit / 2D Ortho camera navigation, and a hardware-accelerated GPU instanced node visualizer running at locked 144 FPS (2 Draw Calls).
+
+![SboxAstGraph Native S&box Visualizer](media/preview.png)
+
+---
+
+### Legacy CLI Documentation (Archived)
+*The documentation below reflects the original standalone CLI / mock-assembly version and is preserved for development history and Facepunch application review.*
+
+---
+
+
 A specialized, lightweight static code analysis tool, virtual SDK generator, dependency graph builder, and Model Context Protocol (MCP) server designed specifically for the S&box engine ecosystem (.NET 10 / Source 2).
 
 > **Alpha Disclaimer & Note for Facepunch**:
