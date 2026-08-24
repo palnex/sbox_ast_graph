@@ -4,6 +4,13 @@ using Sandbox;
 
 namespace ArchitectureVisualizer.UI.CanvasEngine.Models;
 
+public enum TextLabelMode
+{
+    SmartLOD = 0,     // Shows hubs & important nodes when far, all when close
+    AlwaysShowAll = 1,// Always shows all labels with smooth distance fade
+    HoverOnly = 2     // Minimalist: shows label only when hovered or selected
+}
+
 /// <summary>
 /// Defines visual styling tokens and visual flags for the 2D Canvas Engine.
 /// </summary>
@@ -108,4 +115,7 @@ public sealed class CanvasTheme
     /// Whether to render directional arrowheads along edges.
     /// </summary>
     public bool ShowEdgeArrows { get; set; } = false;
+
+    public TextLabelMode LabelMode { get; set; } = TextLabelMode.SmartLOD;
+    public float TextSizeScale { get; set; } = 1.0f;
 }

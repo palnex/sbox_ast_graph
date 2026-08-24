@@ -105,6 +105,42 @@ public sealed class CanvasForcesHud : Widget
             _canvas.Update();
         } );
 
+        // ================= TEXT LABELS SECTION =================
+        var textHeader = _contentPanel.Layout.Add( new Label( "TEXT LABELS", _contentPanel ) );
+        textHeader.SetStyles( "color: #e3b341; font-weight: bold; font-size: 10px; margin-top: 6px;" );
+
+        // Text Size Slider
+        AddSlider( "Text Size", 0.4f, 3.0f, theme.TextSizeScale, val =>
+        {
+            theme.TextSizeScale = val;
+            _canvas.SyncGpuBuffers();
+            _canvas.Update();
+        } );
+
+        // Mode Button (Cycles: Smart LOD -> All Labels -> Hover Only)
+        string GetModeButtonText() => theme.LabelMode switch
+        {
+            ArchitectureVisualizer.UI.CanvasEngine.Models.TextLabelMode.AlwaysShowAll => "Mode: Always Show All 👁️",
+            ArchitectureVisualizer.UI.CanvasEngine.Models.TextLabelMode.HoverOnly => "Mode: Hover & Select Only 🎯",
+            _ => "Mode: Smart LOD 🧠"
+        };
+
+        var labelModeBtn = _contentPanel.Layout.Add( new Button( GetModeButtonText(), "label", _contentPanel ) );
+        labelModeBtn.FixedHeight = 24;
+        labelModeBtn.Clicked = () =>
+        {
+            theme.LabelMode = theme.LabelMode switch
+            {
+                ArchitectureVisualizer.UI.CanvasEngine.Models.TextLabelMode.SmartLOD => ArchitectureVisualizer.UI.CanvasEngine.Models.TextLabelMode.AlwaysShowAll,
+                ArchitectureVisualizer.UI.CanvasEngine.Models.TextLabelMode.AlwaysShowAll => ArchitectureVisualizer.UI.CanvasEngine.Models.TextLabelMode.HoverOnly,
+                _ => ArchitectureVisualizer.UI.CanvasEngine.Models.TextLabelMode.SmartLOD
+            };
+
+            labelModeBtn.Text = GetModeButtonText();
+            _canvas.SyncGpuBuffers();
+            _canvas.Update();
+        };
+
         // ================= FORCES SECTION =================
         var forcesHeader = _contentPanel.Layout.Add( new Label( "PHYSICS FORCES", _contentPanel ) );
         forcesHeader.SetStyles( "color: #7ee787; font-weight: bold; font-size: 10px; margin-top: 6px;" );

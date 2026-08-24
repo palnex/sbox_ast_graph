@@ -26,3 +26,7 @@ code/Properties/*
 # Exported / standalone games
 Exports/
 Assets/test_blender/gude-2026-06-23.log
+
+# My utils
+project_structure.md
+make_tree.py

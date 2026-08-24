@@ -25,10 +25,11 @@ public class CanvasWidget : SceneRenderingWidget, IDisposable
 
     private GraphNodeSceneObject _nodeObject = null!;
     private GraphEdgeSceneObject _edgeObject = null!;
+    private DynamicUnicodeAtlas _dynamicAtlas = null!;
+    private GpuComputeTextPipeline _textPipeline = null!;
 
     private Transform[] _nodeTransformsStaging = new Transform[2048];
     private Color[] _nodeColorsStaging = new Color[2048];
-    private (Vector3 Start, Vector3 End, Color32 Color, EdgeStyle Style, float Speed)[] _edgeStaging = new (Vector3, Vector3, Color32, EdgeStyle, float)[8192];
 
     public CanvasTheme Theme { get; set; } = CanvasTheme.DefaultDark;
     public SpatialRegistry Registry { get; } = new();
@@ -99,6 +100,8 @@ public class CanvasWidget : SceneRenderingWidget, IDisposable
 
         _nodeObject = new GraphNodeSceneObject( _sceneWorld );
         _edgeObject = new GraphEdgeSceneObject( _sceneWorld );
+        _dynamicAtlas = new DynamicUnicodeAtlas();
+        _textPipeline = new GpuComputeTextPipeline( _sceneWorld, _dynamicAtlas );
     }
 
     public void Clear()
@@ -111,6 +114,7 @@ public class CanvasWidget : SceneRenderingWidget, IDisposable
         _focusedNeighbors.Clear();
         _inspectorOverlay.Visible = false;
 
+        _textPipeline.InvalidateCache();
         _nodeObject.MarkTextureDirty();
         SyncGpuBuffers();
         Update();
@@ -185,6 +189,7 @@ public class CanvasWidget : SceneRenderingWidget, IDisposable
 
         float dt = RealTime.Delta;
 
+        // 1. Dragging Node
         if ( _isDraggingNode && _draggedNodeIndex >= 0 && _draggedNodeIndex < Registry.Count )
         {
             Vector3? worldPlaneHit = CameraController.GetWorldPosOnPlane( GetRay( _lastMousePos ) );
@@ -197,21 +202,27 @@ public class CanvasWidget : SceneRenderingWidget, IDisposable
             }
         }
 
-        if ( !Physics.IsSleeping && (!Physics.PauseDuringPlay || !Game.IsPlaying) )
+        // 2. Physics step
+        bool isPhysicsActive = !Physics.IsSleeping && (!Physics.PauseDuringPlay || !Game.IsPlaying);
+        if ( isPhysicsActive )
         {
             Physics.Step( Registry, Edges, dt, Theme.NodeSizeScale );
             SyncGpuBuffers();
             UpdateFloatingCardPosition();
-            Update();
         }
 
+        // 3. Keep edge shader real-time clock alive
+        _edgeObject.UpdateTimeUniform();
+
+        // 4. Update camera animations
         CameraController.UpdateAnimation( dt );
+
+        Update();
     }
 
     public void SyncGpuBuffers()
     {
         int nodeCount = Registry.Count;
-        int edgeCount = Edges.Count;
 
         if ( _nodeTransformsStaging.Length < nodeCount )
         {
@@ -219,15 +230,10 @@ public class CanvasWidget : SceneRenderingWidget, IDisposable
             Array.Resize( ref _nodeColorsStaging, Math.Max( _nodeColorsStaging.Length * 2, nodeCount ) );
         }
 
-        if ( _edgeStaging.Length < edgeCount )
-        {
-            Array.Resize( ref _edgeStaging, Math.Max( _edgeStaging.Length * 2, edgeCount ) );
-        }
-
         var spatials = Registry.GetReadOnlySpatialSpan();
         bool hasFocus = HoveredNodeIndex >= 0 || SelectedNodeIndex >= 0;
 
-        // 1. Быстрый перенос позиций нод
+        // 1. GPU Instanced Quads for Nodes
         for ( int i = 0; i < nodeCount; i++ )
         {
             ref readonly var node = ref spatials[i];
@@ -258,37 +264,11 @@ public class CanvasWidget : SceneRenderingWidget, IDisposable
 
         _nodeObject.UpdateNodes( _nodeTransformsStaging.AsSpan( 0, nodeCount ), spatials, _nodeColorsStaging.AsSpan( 0, nodeCount ) );
 
-        // 2. Быстрый перенос ребер
-        int validEdgeCount = 0;
-        for ( int i = 0; i < edgeCount; i++ )
-        {
-            var edge = Edges[i];
-            if ( edge.SourceIndex < 0 || edge.SourceIndex >= spatials.Length ||
-                 edge.TargetIndex < 0 || edge.TargetIndex >= spatials.Length )
-            {
-                continue;
-            }
+        // 2. Direct Single-Pass Ribbon Edges
+        _edgeObject.UpdateEdges( Registry, Edges, Theme, SelectedNodeIndex, HoveredNodeIndex, CameraController.Is3DMode );
 
-            ref readonly var src = ref spatials[edge.SourceIndex];
-            ref readonly var dst = ref spatials[edge.TargetIndex];
-
-            if ( src.IsHidden || dst.IsHidden ) continue;
-
-            Vector3 p0 = GetNodeWorldPosition3D( edge.SourceIndex );
-            Vector3 p1 = GetNodeWorldPosition3D( edge.TargetIndex );
-
-            bool isEdgeFocused = !hasFocus || (edge.SourceIndex == SelectedNodeIndex || edge.TargetIndex == SelectedNodeIndex ||
-                                               edge.SourceIndex == HoveredNodeIndex || edge.TargetIndex == HoveredNodeIndex);
-
-            Color edgeCol = isEdgeFocused
-                ? (src.IsSelected || dst.IsSelected ? Theme.SelectionColor : Theme.HoverColor).WithAlpha( 0.85f )
-                : (edge.CustomColor ?? Theme.DefaultEdgeColor).WithAlpha( 0.35f );
-
-            _edgeStaging[validEdgeCount++] = (p0, p1, (Color32)edgeCol, edge.Style, edge.FlowSpeed);
-        }
-
-        float edgeThickness = MathF.Max( 1.5f, 2.5f * Theme.LinkThicknessScale );
-        _edgeObject.UploadEdges( _edgeStaging.AsSpan( 0, validEdgeCount ), edgeThickness );
+        // 3. GPU Compute Culling & Instanced MSDF Text Pipeline
+        _textPipeline.UpdateLabels( _camera, Registry, Theme, Size, SelectedNodeIndex, HoveredNodeIndex, _focusedNeighbors, CameraController.Is3DMode );
     }
 
     private void UpdateFloatingCardPosition()
@@ -312,23 +292,21 @@ public class CanvasWidget : SceneRenderingWidget, IDisposable
     protected override void OnResize()
     {
         base.OnResize();
+        SyncGpuBuffers();
         UpdateFloatingCardPosition();
         Update();
     }
 
     protected override void OnPaint()
     {
-        // 1. Native GPU Scene rendered directly via Swapchain!
+        // 1. Native GPU Scene (Nodes + Edges + GPU Compute Text) rendered via Swapchain
         base.OnPaint();
 
-        // 2. Background Grid Overlay
+        // 2. Background Grid Overlay in 2D
         if ( Theme.ShowGrid && !CameraController.Is3DMode )
         {
             DrawGrid();
         }
-
-        // 3. Crisp Typography Overlay
-        RenderLabels();
     }
 
     private void DrawGrid()
@@ -354,48 +332,6 @@ public class CanvasWidget : SceneRenderingWidget, IDisposable
 
         for ( float y = startY; y < Size.y; y += step )
             Paint.DrawLine( new Vector2( 0, y ), new Vector2( Size.x, y ) );
-    }
-
-    private void RenderLabels()
-    {
-        if ( _camera == null ) return;
-
-        var spatials = Registry.GetReadOnlySpatialSpan();
-        int count = spatials.Length;
-
-        for ( int i = 0; i < count; i++ )
-        {
-            ref readonly var node = ref spatials[i];
-            if ( node.IsHidden ) continue;
-
-            bool isPrimary = i == SelectedNodeIndex || i == HoveredNodeIndex;
-            bool isNeighbor = _focusedNeighbors.Contains( i );
-
-            if ( !isPrimary && !isNeighbor ) continue;
-
-            Vector3 worldPos = GetNodeWorldPosition3D( i ) + new Vector3( 0, -node.Radius * Theme.NodeSizeScale - 8f, 0 );
-
-            if ( CameraController.Is3DMode && Vector3.Dot( _cameraObject.WorldRotation.Forward, worldPos - _cameraObject.WorldPosition ) <= 0 )
-                continue;
-
-            Vector2 screenPos = _camera.PointToScreenNormal( worldPos ) * Size;
-
-            if ( screenPos.x < -80 || screenPos.x > Size.x + 80 || screenPos.y < -40 || screenPos.y > Size.y + 40 )
-                continue;
-
-            var payload = Registry.GetPayload( i );
-            int fontSize = isPrimary ? 13 : 11;
-            Paint.SetFont( "Segoe UI", fontSize, isPrimary ? 700 : 500 );
-
-            var textRect = new Rect( screenPos.x - 100, screenPos.y, 200, 20 );
-
-            Paint.SetPen( Color.Black.WithAlpha( 0.85f ) );
-            Paint.DrawText( new Rect( textRect.Position + new Vector2( 1, 1 ), textRect.Size ), payload.Title, TextFlag.Center );
-
-            Color textColor = isPrimary ? Color.White : Theme.TextColor.WithAlpha( 0.90f );
-            Paint.SetPen( textColor );
-            Paint.DrawText( textRect, payload.Title, TextFlag.Center );
-        }
     }
 
     protected override void OnMousePress( MouseEvent e )
@@ -454,6 +390,7 @@ public class CanvasWidget : SceneRenderingWidget, IDisposable
         if ( _isPanning )
         {
             CameraController.Pan( delta, Size );
+            SyncGpuBuffers();
             UpdateFloatingCardPosition();
             Update();
             return;
@@ -462,6 +399,7 @@ public class CanvasWidget : SceneRenderingWidget, IDisposable
         if ( _isOrbiting )
         {
             CameraController.Orbit( delta );
+            SyncGpuBuffers();
             UpdateFloatingCardPosition();
             Update();
             return;
@@ -550,6 +488,7 @@ public class CanvasWidget : SceneRenderingWidget, IDisposable
     protected override void OnMouseWheel( WheelEvent e )
     {
         CameraController.Zoom( e.Delta );
+        SyncGpuBuffers();
         UpdateFloatingCardPosition();
         Update();
         e.Accepted = true;
@@ -678,6 +617,7 @@ public class CanvasWidget : SceneRenderingWidget, IDisposable
 
     public void Dispose()
     {
+        _textPipeline?.Dispose();
         _edgeObject?.Dispose();
         _nodeObject?.Dispose();
         _cameraObject?.Destroy();

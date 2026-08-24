@@ -1,14 +1,13 @@
 #nullable enable
 using System;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using ArchitectureVisualizer.UI.CanvasEngine.Core;
 using ArchitectureVisualizer.UI.CanvasEngine.Models;
 using Sandbox;
 
 namespace ArchitectureVisualizer.UI.CanvasEngine.Rendering;
 
-/// <summary>
-/// Explicit vertex structure matching the HLSL VertexInput layout exactly.
-/// </summary>
 [StructLayout( LayoutKind.Sequential )]
 public struct CustomRibbonVertex
 {
@@ -37,13 +36,11 @@ public struct CustomRibbonVertex
     }
 }
 
-/// <summary>
-/// Zero-allocation GPU dynamic ribbon edge renderer reusing a single persistent Mesh.
-/// </summary>
 public sealed class GraphEdgeSceneObject : IDisposable, Sandbox.IValid
 {
     private readonly SceneWorld _sceneWorld;
     private readonly Material _lineMaterial;
+    private readonly RenderAttributes _renderAttributes = new();
     private SceneObject? _sceneObject;
     private Mesh? _mesh;
 
@@ -97,17 +94,32 @@ public sealed class GraphEdgeSceneObject : IDisposable, Sandbox.IValid
         _sceneObject.Bounds = bigBounds;
     }
 
-    public void UploadEdges( ReadOnlySpan<(Vector3 Start, Vector3 End, Color32 Color, EdgeStyle Style, float Speed)> edges, float thickness = 5.0f )
+    /// <summary>
+    /// Binds continuous real-time clock to the edge shader.
+    /// </summary>
+    public void UpdateTimeUniform()
     {
-        int edgeCount = edges.Length;
         if ( _sceneObject == null || !_sceneObject.IsValid() ) return;
+        _renderAttributes.Set( "g_flCustomTime", RealTime.Now );
+        _sceneObject.Attributes.Set( "g_flCustomTime", RealTime.Now );
+    }
+
+    public void UpdateEdges(
+        SpatialRegistry registry,
+        IReadOnlyList<CanvasEdge> edges,
+        CanvasTheme theme,
+        int selectedIndex,
+        int hoveredIndex,
+        bool is3DMode )
+    {
+        int edgeCount = edges.Count;
+        if ( _sceneObject == null || !_sceneObject.IsValid() ) return;
+
+        UpdateTimeUniform();
 
         if ( edgeCount == 0 )
         {
-            if ( _mesh != null )
-            {
-                _mesh.SetIndexRange( 0, 0 );
-            }
+            _mesh?.SetIndexRange( 0, 0 );
             return;
         }
 
@@ -115,21 +127,19 @@ public sealed class GraphEdgeSceneObject : IDisposable, Sandbox.IValid
         int requiredIndices = edgeCount * 6;
 
         if ( _vertices.Length < requiredVertices )
-        {
             Array.Resize( ref _vertices, Math.Max( _vertices.Length * 2, requiredVertices ) );
-        }
 
         if ( _indices.Length < requiredIndices )
-        {
             Array.Resize( ref _indices, Math.Max( _indices.Length * 2, requiredIndices ) );
-        }
 
         if ( _mesh == null || requiredVertices > _allocatedVertCapacity || requiredIndices > _allocatedIndCapacity )
         {
             RecreateMesh( Math.Max( requiredVertices, _allocatedVertCapacity * 2 ), Math.Max( requiredIndices, _allocatedIndCapacity * 2 ) );
         }
 
-        float halfThick = MathF.Max( 1.5f, thickness * 0.5f );
+        var spatials = registry.GetReadOnlySpatialSpan();
+        bool hasFocus = hoveredIndex >= 0 || selectedIndex >= 0;
+        float halfThick = MathF.Max( 1.5f, 2.5f * theme.LinkThicknessScale * 0.5f );
         const float zOffset = -1.0f;
 
         int vertIdx = 0;
@@ -138,32 +148,52 @@ public sealed class GraphEdgeSceneObject : IDisposable, Sandbox.IValid
         for ( int i = 0; i < edgeCount; i++ )
         {
             var edge = edges[i];
-            if ( edge.Color.a == 0 ) continue;
+            if ( edge.SourceIndex < 0 || edge.SourceIndex >= spatials.Length ||
+                 edge.TargetIndex < 0 || edge.TargetIndex >= spatials.Length )
+            {
+                continue;
+            }
 
-            Vector3 p0 = edge.Start + new Vector3( 0, 0, zOffset );
-            Vector3 p1 = edge.End + new Vector3( 0, 0, zOffset );
+            ref readonly var src = ref spatials[edge.SourceIndex];
+            ref readonly var dst = ref spatials[edge.TargetIndex];
+
+            if ( src.IsHidden || dst.IsHidden ) continue;
+
+            float z0 = is3DMode ? (src.ZLevel * 45.0f) : 0f;
+            float z1 = is3DMode ? (dst.ZLevel * 45.0f) : 0f;
+
+            Vector3 p0 = new( src.Position.x, src.Position.y, z0 + zOffset );
+            Vector3 p1 = new( dst.Position.x, dst.Position.y, z1 + zOffset );
 
             Vector3 dir = (p1 - p0).Normal;
             if ( dir.LengthSquared < 0.001f ) continue;
+
+            bool isEdgeFocused = !hasFocus || (edge.SourceIndex == selectedIndex || edge.TargetIndex == selectedIndex ||
+                                               edge.SourceIndex == hoveredIndex || edge.TargetIndex == hoveredIndex);
+
+            Color edgeCol = isEdgeFocused
+                ? (src.IsSelected || dst.IsSelected ? theme.SelectionColor : theme.HoverColor).WithAlpha( 0.85f )
+                : (edge.CustomColor ?? theme.DefaultEdgeColor).WithAlpha( 0.45f );
+
+            if ( edgeCol.a == 0 ) continue;
 
             Vector3 side = new Vector3( -dir.y, dir.x, 0f ).Normal * halfThick;
 
             int baseV = vertIdx;
             float styleVal = (float)edge.Style;
-            float speedVal = edge.Speed;
-            Vector3 edgeParams = new Vector3( styleVal, speedVal, 0f );
+            float speedVal = edge.FlowSpeed;
+            Vector3 edgeParams = new( styleVal, speedVal, 0f );
+            Color32 c32 = (Color32)edgeCol;
 
-            _vertices[vertIdx++] = new CustomRibbonVertex( p0 - side, new Vector2( 0f, 0f ), edge.Color ) { Normal = edgeParams };
-            _vertices[vertIdx++] = new CustomRibbonVertex( p0 + side, new Vector2( 0f, 1f ), edge.Color ) { Normal = edgeParams };
-            _vertices[vertIdx++] = new CustomRibbonVertex( p1 + side, new Vector2( 1f, 1f ), edge.Color ) { Normal = edgeParams };
-            _vertices[vertIdx++] = new CustomRibbonVertex( p1 - side, new Vector2( 1f, 0f ), edge.Color ) { Normal = edgeParams };
+            _vertices[vertIdx++] = new CustomRibbonVertex( p0 - side, new Vector2( 0f, 0f ), c32 ) { Normal = edgeParams };
+            _vertices[vertIdx++] = new CustomRibbonVertex( p0 + side, new Vector2( 0f, 1f ), c32 ) { Normal = edgeParams };
+            _vertices[vertIdx++] = new CustomRibbonVertex( p1 + side, new Vector2( 1f, 1f ), c32 ) { Normal = edgeParams };
+            _vertices[vertIdx++] = new CustomRibbonVertex( p1 - side, new Vector2( 1f, 0f ), c32 ) { Normal = edgeParams };
 
-            // Triangle 1
             _indices[indIdx++] = baseV + 0;
             _indices[indIdx++] = baseV + 1;
             _indices[indIdx++] = baseV + 2;
 
-            // Triangle 2
             _indices[indIdx++] = baseV + 0;
             _indices[indIdx++] = baseV + 2;
             _indices[indIdx++] = baseV + 3;

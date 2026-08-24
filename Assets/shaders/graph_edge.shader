@@ -1,6 +1,6 @@
 HEADER
 {
-    Description = "Dynamic Multi-Pattern Ribbon Edge Shader with Overdraw LOD";
+    Description = "Dynamic Multi-Pattern GPU Ribbon Edge Shader with Continuous Time";
     Version = 1;
 }
 
@@ -18,6 +18,10 @@ MODES
 COMMON
 {
 #include "common/shared.hlsl"
+
+    // Real-time continuous clock driven by CPU RealTime.Now
+    float g_flCustomTime < Attribute("g_flCustomTime");
+    > ;
 }
 
 struct VertexInput
@@ -30,7 +34,7 @@ struct PixelInput
 {
 #include "common/pixelinput.hlsl"
     float4 vColor : COLOR0;
-    float2 vEdgeParams : TEXCOORD8;
+    float2 vEdgeParams : TEXCOORD8; // x: Style ID, y: Flow Speed
 };
 
 VS
@@ -59,66 +63,76 @@ PS
     float4 MainPs(PixelInput i) : SV_Target0
     {
         float4 baseColor = i.vColor;
-
-        // =========================================================================
-        // 1. FAST-PATH FOR BACKGROUND EDGES (Zero Overdraw Math in dense clusters!)
-        // =========================================================================
-        if (baseColor.a < 0.50)
-        {
-            return baseColor; // Ultra-fast 1-cycle write for background lines
-        }
-
-        // =========================================================================
-        // 2. HIGH-PRECISION ANIMATED PATH (Active / Focused Connections)
-        // =========================================================================
         float u = i.vTextureCoords.x;
         float v = i.vTextureCoords.y;
         float style = i.vEdgeParams.x;
-        float speed = max(0.2, i.vEdgeParams.y);
-        float crossDist = abs(v - 0.5) * 2.0;
+        float speed = i.vEdgeParams.y;
 
+        float time = g_flCustomTime;
+
+        // =========================================================================
+        // 1. FAST-PATH: SOLID LINES (Style == 0)
+        // =========================================================================
+        if (style < 0.5)
+        {
+            // Simple edge anti-aliasing on borders
+            float edgeDist = abs(v - 0.5) * 2.0;
+            float aa = fwidth(edgeDist);
+            float alpha = 1.0 - smoothstep(1.0 - aa * 2.0, 1.0, edgeDist);
+            return float4(baseColor.rgb, baseColor.a * alpha);
+        }
+
+        // =========================================================================
+        // 2. ANIMATED PATTERNS
+        // =========================================================================
+        float crossDist = abs(v - 0.5) * 2.0;
         float finalAlpha = baseColor.a;
         float3 finalColor = baseColor.rgb;
 
-        // STYLE 1: DASHED (- - - -)
+        // STYLE 1: DASHED ( - - - - )
         if (style > 0.5 && style < 1.5)
         {
-            float dash = frac(u * 16.0 - g_flTime * speed * 2.0);
-            if (dash > 0.5)
+            float dash = frac(u * 12.0 - time * speed * 1.5);
+            if (dash > 0.55)
                 discard;
+
+            float aa = fwidth(crossDist);
+            finalAlpha *= (1.0 - smoothstep(0.85, 1.0, crossDist));
         }
-        // STYLE 2: CHEVRON ARROWS (> > > >)
+        // STYLE 2: DIRECTIONAL CHEVRONS ( > > > > )
         else if (style > 1.5 && style < 2.5)
         {
-            float cell = frac(u * 6.0 - g_flTime * speed * 1.5);
-            float chevron = cell - (crossDist * 0.45);
-            float isArrow = (chevron > 0.0 && chevron < 0.30) ? 1.0 : 0.0;
-            float isGuide = (crossDist < 0.20) ? 0.30 : 0.0;
+            float cell = frac(u * 8.0 - time * speed * 1.2);
+            float chevron = cell - (crossDist * 0.40);
 
-            finalAlpha = max(isArrow * 0.95, isGuide * 0.35);
-            if (finalAlpha <= 0.02)
+            float isArrow = (chevron > 0.0 && chevron < 0.35) ? 1.0 : 0.0;
+            float isGuide = (crossDist < 0.25) ? 0.35 : 0.0;
+
+            finalAlpha *= max(isArrow, isGuide);
+            if (finalAlpha <= 0.01)
                 discard;
 
             if (isArrow > 0.5)
-                finalColor = lerp(baseColor.rgb, float3(1.0, 1.0, 1.0), 0.55);
+                finalColor = lerp(finalColor, float3(1.0, 1.0, 1.0), 0.65);
         }
-        // STYLE 3: DOUBLE LINE (= = = =)
+        // STYLE 3: DOUBLE RAIL ( = = = = )
         else if (style > 2.5 && style < 3.5)
         {
             if (crossDist < 0.35)
                 discard;
         }
-        // STYLE 4: LASER PULSE
+        // STYLE 4: LASER ENERGY PULSE / PHOTON BURST
         else if (style > 3.5 && style < 4.5)
         {
-            float pulsePos = frac(g_flTime * speed * 0.8);
+            float pulsePos = frac(time * speed * 0.6);
             float distToPulse = abs(u - pulsePos);
             if (distToPulse > 0.5)
                 distToPulse = 1.0 - distToPulse;
-            float pulse = exp(-distToPulse * distToPulse * 90.0);
 
-            finalColor += float3(0.5, 0.8, 1.0) * (pulse * 1.8);
-            finalAlpha = max(baseColor.a * 0.4, pulse);
+            float pulse = exp(-distToPulse * distToPulse * 120.0);
+
+            finalColor += float3(0.4, 0.8, 1.0) * (pulse * 2.5);
+            finalAlpha = max(baseColor.a * 0.35, pulse * 0.95);
         }
 
         return float4(finalColor, finalAlpha);
