@@ -1,6 +1,6 @@
 #nullable enable
 using System;
-using ArchitectureVisualizer.UI.CanvasEngine.Widgets;
+using ArchitectureVisualizer.UI;
 using Editor;
 using Sandbox;
 

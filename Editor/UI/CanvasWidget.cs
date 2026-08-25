@@ -2,20 +2,21 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using Editor.Core;
-using Editor.Core.Models;
+using ArchitectureVisualizer.UI.CanvasEngine.API;
 using ArchitectureVisualizer.UI.CanvasEngine.Core;
 using ArchitectureVisualizer.UI.CanvasEngine.Models;
 using ArchitectureVisualizer.UI.CanvasEngine.Rendering;
+using ArchitectureVisualizer.UI.Floating;
 using Editor;
 using Sandbox;
 
-namespace ArchitectureVisualizer.UI.CanvasEngine.Widgets;
+namespace ArchitectureVisualizer.UI;
 
 /// <summary>
 /// High-Performance Zero-Copy Graph Canvas Widget rendering directly to Native GPU Swapchain via SceneRenderingWidget.
+/// Implements the public ICanvasGraph API for extensible graph orchestration.
 /// </summary>
-public class CanvasWidget : SceneRenderingWidget, IDisposable
+public class CanvasWidget : SceneRenderingWidget, ICanvasGraph, IDisposable
 {
     private Scene _scene = null!;
     private SceneWorld _sceneWorld = null!;
@@ -31,6 +32,9 @@ public class CanvasWidget : SceneRenderingWidget, IDisposable
     private Transform[] _nodeTransformsStaging = new Transform[2048];
     private Color[] _nodeColorsStaging = new Color[2048];
 
+    private readonly Dictionary<string, int> _idToIndexMap = new( StringComparer.Ordinal );
+    private bool _isBatching = false;
+
     public CanvasTheme Theme { get; set; } = CanvasTheme.DefaultDark;
     public SpatialRegistry Registry { get; } = new();
     public SleepyPhysicsSolver Physics { get; } = new();
@@ -39,6 +43,14 @@ public class CanvasWidget : SceneRenderingWidget, IDisposable
     public int SelectedNodeIndex { get; private set; } = -1;
     public int HoveredNodeIndex { get; private set; } = -1;
 
+    public int NodeCount => Registry.Count;
+    public int EdgeCount => Edges.Count;
+
+    // Public API Events
+    public event Action<string>? OnNodeClicked;
+    public event Action<string>? OnNodeIdDoubleClicked;
+    public event Action<string, bool>? OnNodeHoverChanged;
+    public event Action<string, string>? OnEdgeClicked { add { } remove { } }
     public event Action<int>? OnNodeSelected;
     public event Action<int>? OnNodeDoubleClicked;
 
@@ -69,12 +81,19 @@ public class CanvasWidget : SceneRenderingWidget, IDisposable
         _inspectorOverlay.Visible = false;
         _inspectorOverlay.OnNavigateRequested += targetId =>
         {
-            for ( int i = 0; i < Registry.Count; i++ )
+            if ( _idToIndexMap.TryGetValue( targetId, out int idx ) )
             {
-                if ( Registry.GetPayload( i ).Id == targetId )
+                FocusOnNode( idx, targetSize: 1500f );
+            }
+            else
+            {
+                for ( int i = 0; i < Registry.Count; i++ )
                 {
-                    FocusOnNode( i, targetSize: 1500f );
-                    break;
+                    if ( Registry.GetPayload( i ).Id == targetId )
+                    {
+                        FocusOnNode( i, targetSize: 1500f );
+                        break;
+                    }
                 }
             }
         };
@@ -104,18 +123,203 @@ public class CanvasWidget : SceneRenderingWidget, IDisposable
         _textPipeline = new GpuComputeTextPipeline( _sceneWorld, _dynamicAtlas );
     }
 
+    public void MarkNodesDirty() => _nodeObject?.MarkTextureDirty();
+
+    // ==========================================
+    // ICanvasGraph IMPLEMENTATION
+    // ==========================================
+
+    public NodeBuilder AddNode( string id, string title, string? subtitle = null )
+    {
+        if ( _idToIndexMap.TryGetValue( id, out int existingIndex ) )
+        {
+            var p = Registry.GetPayload( existingIndex );
+            p.Title = title;
+            p.Subtitle = subtitle ?? p.Subtitle;
+            _textPipeline?.InvalidateCache();
+            return new NodeBuilder( this, existingIndex, id );
+        }
+
+        var spatial = new NodeSpatialData
+        {
+            Position = Vector2.Zero,
+            Velocity = Vector2.Zero,
+            Radius = 10f,
+            ZLevel = 0,
+            Shape = NodeShape.Circle,
+            Flags = NodeFlags.None
+        };
+
+        var payload = new NodePayload
+        {
+            Id = id,
+            Title = title,
+            Subtitle = subtitle ?? "",
+            AccentColor = Color.White,
+            UserData = null
+        };
+
+        int newIndex = Registry.Allocate( in spatial, payload );
+        _idToIndexMap[id] = newIndex;
+
+        _textPipeline?.InvalidateCache();
+        MarkNodesDirty();
+
+        if ( !_isBatching )
+        {
+            SyncGpuBuffers();
+            Update();
+        }
+
+        return new NodeBuilder( this, newIndex, id );
+    }
+
+    public bool HasNode( string id ) => _idToIndexMap.ContainsKey( id );
+
+    public bool RemoveNode( string id )
+    {
+        if ( !_idToIndexMap.TryGetValue( id, out int nodeIndex ) )
+            return false;
+
+        Registry.GetSpatialRef( nodeIndex ).SetFlag( NodeFlags.Hidden, true );
+        _idToIndexMap.Remove( id );
+
+        Edges.RemoveAll( e => e.SourceIndex == nodeIndex || e.TargetIndex == nodeIndex );
+
+        _textPipeline?.InvalidateCache();
+        MarkNodesDirty();
+
+        if ( !_isBatching )
+        {
+            SyncGpuBuffers();
+            Update();
+        }
+
+        return true;
+    }
+
+    public EdgeBuilder Connect( string sourceId, string targetId )
+    {
+        if ( !_idToIndexMap.TryGetValue( sourceId, out int srcIdx ) ||
+             !_idToIndexMap.TryGetValue( targetId, out int dstIdx ) )
+        {
+            return new EdgeBuilder( this, -1 );
+        }
+
+        var edge = new CanvasEdge( srcIdx, dstIdx )
+        {
+            Style = EdgeStyle.Solid,
+            FlowSpeed = 1.0f,
+            CustomColor = Theme.DefaultEdgeColor,
+            DesiredSpringLength = 160f
+        };
+
+        Edges.Add( edge );
+        int edgeIndex = Edges.Count - 1;
+
+        if ( !_isBatching )
+        {
+            SyncGpuBuffers();
+            Update();
+        }
+
+        return new EdgeBuilder( this, edgeIndex );
+    }
+
+    public bool Disconnect( string sourceId, string targetId )
+    {
+        if ( !_idToIndexMap.TryGetValue( sourceId, out int srcIdx ) ||
+             !_idToIndexMap.TryGetValue( targetId, out int dstIdx ) )
+        {
+            return false;
+        }
+
+        int removed = Edges.RemoveAll( e => e.SourceIndex == srcIdx && e.TargetIndex == dstIdx );
+        if ( removed > 0 && !_isBatching )
+        {
+            SyncGpuBuffers();
+            Update();
+        }
+
+        return removed > 0;
+    }
+
+    public void BatchUpdate( Action<ICanvasGraph> updateAction )
+    {
+        _isBatching = true;
+        try
+        {
+            updateAction( this );
+        }
+        finally
+        {
+            _isBatching = false;
+            SyncGpuBuffers();
+            Physics.WakeUp();
+            Update();
+        }
+    }
+
+    public void LoadFromProvider( IGraphDataProvider provider )
+    {
+        Clear();
+        BatchUpdate( graph => provider.Populate( graph ) );
+    }
+
+    public void PulseEdge( string sourceId, string targetId, Color? pulseColor = null, float speed = 2.0f )
+    {
+        if ( !_idToIndexMap.TryGetValue( sourceId, out int srcIdx ) ||
+             !_idToIndexMap.TryGetValue( targetId, out int dstIdx ) )
+        {
+            return;
+        }
+
+        for ( int i = 0; i < Edges.Count; i++ )
+        {
+            var e = Edges[i];
+            if ( e.SourceIndex == srcIdx && e.TargetIndex == dstIdx )
+            {
+                e.Style = EdgeStyle.LaserPulse;
+                e.FlowSpeed = speed;
+                if ( pulseColor.HasValue ) e.CustomColor = pulseColor.Value;
+                break;
+            }
+        }
+
+        SyncGpuBuffers();
+        Update();
+    }
+
+    public void FlashNode( string id, Color flashColor, float duration = 0.5f )
+    {
+        if ( !_idToIndexMap.TryGetValue( id, out int nodeIndex ) ) return;
+        Registry.GetPayload( nodeIndex ).AccentColor = flashColor;
+        MarkNodesDirty();
+        SyncGpuBuffers();
+        Update();
+    }
+
+    public void FocusNode( string id, float targetZoom = 1500f )
+    {
+        if ( _idToIndexMap.TryGetValue( id, out int nodeIndex ) )
+        {
+            FocusOnNode( nodeIndex, targetZoom );
+        }
+    }
+
     public void Clear()
     {
         Registry.Clear();
         Edges.Clear();
+        _idToIndexMap.Clear();
         SelectedNodeIndex = -1;
         HoveredNodeIndex = -1;
         _draggedNodeIndex = -1;
         _focusedNeighbors.Clear();
         _inspectorOverlay.Visible = false;
 
-        _textPipeline.InvalidateCache();
-        _nodeObject.MarkTextureDirty();
+        _textPipeline?.InvalidateCache();
+        _nodeObject?.MarkTextureDirty();
         SyncGpuBuffers();
         Update();
     }
@@ -141,8 +345,9 @@ public class CanvasWidget : SceneRenderingWidget, IDisposable
         {
             Registry.GetSpatialRef( SelectedNodeIndex ).SetFlag( NodeFlags.Selected, true );
             var payload = Registry.GetPayload( SelectedNodeIndex );
-            _inspectorOverlay.Bind( payload, this );
+            _inspectorOverlay.Bind( payload );
             _inspectorOverlay.Visible = true;
+            OnNodeClicked?.Invoke( payload.Id );
         }
         else
         {
@@ -222,6 +427,8 @@ public class CanvasWidget : SceneRenderingWidget, IDisposable
 
     public void SyncGpuBuffers()
     {
+        if ( _isBatching ) return;
+
         int nodeCount = Registry.Count;
 
         if ( _nodeTransformsStaging.Length < nodeCount )
@@ -267,7 +474,7 @@ public class CanvasWidget : SceneRenderingWidget, IDisposable
         // 2. Direct Single-Pass Ribbon Edges
         _edgeObject.UpdateEdges( Registry, Edges, Theme, SelectedNodeIndex, HoveredNodeIndex, CameraController.Is3DMode );
 
-        // 3. GPU Compute Culling & Instanced MSDF Text Pipeline
+        // 3. GPU Multi-Script Text Label Pipeline
         _textPipeline.UpdateLabels( _camera, Registry, Theme, Size, SelectedNodeIndex, HoveredNodeIndex, _focusedNeighbors, CameraController.Is3DMode );
     }
 
@@ -299,10 +506,8 @@ public class CanvasWidget : SceneRenderingWidget, IDisposable
 
     protected override void OnPaint()
     {
-        // 1. Native GPU Scene (Nodes + Edges + GPU Compute Text) rendered via Swapchain
         base.OnPaint();
 
-        // 2. Background Grid Overlay in 2D
         if ( Theme.ShowGrid && !CameraController.Is3DMode )
         {
             DrawGrid();
@@ -436,12 +641,18 @@ public class CanvasWidget : SceneRenderingWidget, IDisposable
         if ( HoveredNodeIndex != hovered )
         {
             if ( HoveredNodeIndex >= 0 && HoveredNodeIndex < Registry.Count )
+            {
                 Registry.GetSpatialRef( HoveredNodeIndex ).SetFlag( NodeFlags.Hovered, false );
+                OnNodeHoverChanged?.Invoke( Registry.GetPayload( HoveredNodeIndex ).Id, false );
+            }
 
             HoveredNodeIndex = hovered;
 
             if ( HoveredNodeIndex >= 0 && HoveredNodeIndex < Registry.Count )
+            {
                 Registry.GetSpatialRef( HoveredNodeIndex ).SetFlag( NodeFlags.Hovered, true );
+                OnNodeHoverChanged?.Invoke( Registry.GetPayload( HoveredNodeIndex ).Id, true );
+            }
 
             _nodeObject.MarkTextureDirty();
             RebuildFocusedNeighbors();
@@ -499,7 +710,9 @@ public class CanvasWidget : SceneRenderingWidget, IDisposable
         int idx = PickNodeFromRay( GetRay( e.LocalPosition ) );
         if ( idx >= 0 )
         {
+            string id = Registry.GetPayload( idx ).Id;
             OnNodeDoubleClicked?.Invoke( idx );
+            OnNodeIdDoubleClicked?.Invoke( id );
             e.Accepted = true;
         }
     }
@@ -623,105 +836,4 @@ public class CanvasWidget : SceneRenderingWidget, IDisposable
         _cameraObject?.Destroy();
         _scene?.Clear();
     }
-}
-
-/// <summary>
-/// Floating inspection card anchored to the selected node in world space.
-/// </summary>
-public sealed class FloatingInspectorOverlay : Widget
-{
-    private readonly Label _titleLabel;
-    private readonly Label _namespaceLabel;
-    private readonly Label _summaryLabel;
-    private readonly Button _openIdeButton;
-    private readonly Widget _depsContainer;
-
-    private NodePayload? _currentPayload;
-    public event Action<string>? OnNavigateRequested;
-
-    public FloatingInspectorOverlay( Widget parent ) : base( parent )
-    {
-        FocusMode = FocusMode.Click;
-        Cursor = CursorShape.Arrow;
-        Size = new Vector2( 260, 240 );
-
-        SetStyles( @"
-            background-color: rgba( 18, 20, 26, 0.94 );
-            border: 1px solid rgba( 255, 255, 255, 0.14 );
-            border-radius: 8px;
-            padding: 8px;
-        " );
-
-        Layout = Layout.Column();
-        Layout.Margin = 4;
-        Layout.Spacing = 4;
-
-        var header = Layout.AddRow();
-        _titleLabel = header.Add( new Label( "Node Title", this ), 1 );
-        _titleLabel.SetStyles( "font-weight: bold; font-size: 12px; color: #ffffff;" );
-
-        var closeBtn = header.Add( new Button( "close", this ) );
-        closeBtn.Clicked = () => Visible = false;
-        closeBtn.FixedWidth = 20;
-        closeBtn.FixedHeight = 20;
-
-        _namespaceLabel = Layout.Add( new Label( "", this ) );
-        _namespaceLabel.SetStyles( "color: #8b949e; font-size: 10px;" );
-
-        _openIdeButton = Layout.Add( new Button( "Open in Code Editor", "code", this ) );
-        _openIdeButton.Clicked = OnOpenInIdeClicked;
-        _openIdeButton.FixedHeight = 24;
-
-        _summaryLabel = Layout.Add( new Label( "", this ) );
-        _summaryLabel.SetStyles( "color: #c9d1d9; font-size: 10px;" );
-        _summaryLabel.WordWrap = true;
-
-        var scroll = Layout.Add( new ScrollArea( this ), 1 );
-        scroll.Canvas = new Widget( scroll );
-        scroll.Canvas.Layout = Layout.Column();
-        scroll.Canvas.Layout.Spacing = 2;
-        _depsContainer = scroll.Canvas;
-    }
-
-    public void Bind( NodePayload payload, CanvasWidget canvas )
-    {
-        _currentPayload = payload;
-        _titleLabel.Text = payload.Title;
-        _namespaceLabel.Text = payload.Subtitle;
-        _summaryLabel.Text = string.IsNullOrWhiteSpace( payload.Summary ) ? "No summary provided." : payload.Summary.Trim();
-        _openIdeButton.Enabled = !string.IsNullOrEmpty( payload.FilePath );
-
-        _depsContainer.Layout.Clear( true );
-
-        var graph = DependencyGraphEngine.Current;
-        if ( graph != null )
-        {
-            var outgoing = graph.GetOutgoingEdges( payload.Id );
-            foreach ( var edge in outgoing )
-            {
-                string name = graph.Nodes.TryGetValue( edge.TargetId, out var gn ) ? gn.Name : edge.TargetId;
-                var btn = new Button( $"→ {name} ({edge.Kind})", _depsContainer );
-                btn.SetStyles( "text-align: left; font-size: 10px; padding: 2px;" );
-                string targetId = edge.TargetId;
-                btn.Clicked = () => OnNavigateRequested?.Invoke( targetId );
-                _depsContainer.Layout.Add( btn );
-            }
-        }
-
-        AdjustSize();
-    }
-
-    private void OnOpenInIdeClicked()
-    {
-        if ( _currentPayload == null || string.IsNullOrEmpty( _currentPayload.FilePath ) ) return;
-        string path = _currentPayload.FilePath;
-        if ( !Path.IsPathRooted( path ) && Project.Current != null )
-            path = Path.GetFullPath( Path.Combine( Project.Current.RootDirectory.FullName, path ) );
-
-        if ( File.Exists( path ) ) CodeEditor.OpenFile( path, _currentPayload.LineNumber );
-    }
-
-    protected override void OnMousePress( MouseEvent e ) => e.Accepted = true;
-    protected override void OnMouseMove( MouseEvent e ) => e.Accepted = true;
-    protected override void OnMouseWheel( WheelEvent e ) => e.Accepted = true;
 }

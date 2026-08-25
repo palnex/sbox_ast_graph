@@ -3,7 +3,7 @@ using System;
 using System.Collections.Generic;
 using Editor.Core.Models;
 using ArchitectureVisualizer.UI.CanvasEngine.Models;
-using ArchitectureVisualizer.UI.CanvasEngine.Widgets;
+using ArchitectureVisualizer.UI;
 using Editor;
 using Sandbox;
 

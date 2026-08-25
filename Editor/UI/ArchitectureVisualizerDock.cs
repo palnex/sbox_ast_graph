@@ -6,7 +6,7 @@ using Editor.Core;
 using Editor.Core.Models;
 using ArchitectureVisualizer.UI.Bridge;
 using ArchitectureVisualizer.UI.CanvasEngine.Models;
-using ArchitectureVisualizer.UI.CanvasEngine.Widgets;
+using ArchitectureVisualizer.UI;
 using ArchitectureVisualizer.UI.Floating;
 using Editor;
 using Sandbox;
