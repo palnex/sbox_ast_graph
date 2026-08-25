@@ -1,12 +1,13 @@
+#nullable enable
 using System;
 using System.Collections.Generic;
 using System.IO;
 using Sandbox;
 
-namespace Editor.Core.Extractors;
+namespace Editor.Analysis.Internal.Extractors;
 
 /// <summary>
-/// Resolves project paths and enumerates user source code files (.cs, .razor).
+/// Scans and enumerates all active user project source code files.
 /// </summary>
 public static class ProjectSourceScanner
 {
@@ -17,17 +18,21 @@ public static class ProjectSourceScanner
     };
 
     /// <summary>
-    /// Finds all source files in the active s&box project, excluding build artifacts and internal caches.
+    /// Enumerates all user source files in the project's code directory.
     /// </summary>
-    public static IEnumerable<string> EnumerateProjectFiles()
+    public static IEnumerable<string> EnumerateSourceFiles()
     {
         var project = Project.Current;
         if ( project?.RootDirectory == null || !project.RootDirectory.Exists )
             yield break;
 
-        string rootPath = project.RootDirectory.FullName;
+        string codePath = project.GetCodePath();
+        if ( string.IsNullOrEmpty( codePath ) || !Directory.Exists( codePath ) )
+        {
+            codePath = project.RootDirectory.FullName;
+        }
 
-        foreach ( var filePath in Directory.EnumerateFiles( rootPath, "*.*", SearchOption.AllDirectories ) )
+        foreach ( var filePath in Directory.EnumerateFiles( codePath, "*.*", SearchOption.AllDirectories ) )
         {
             string ext = Path.GetExtension( filePath );
             if ( !ValidExtensions.Contains( ext ) )
@@ -35,11 +40,11 @@ public static class ProjectSourceScanner
 
             string normalized = filePath.Replace( '\\', '/' );
 
-            // Skip compiler artifacts, git folders, and internal caches
+            // Ignore compilation artifacts, git folders, and internal caches
             if ( normalized.Contains( "/.sbx/" ) ||
-                normalized.Contains( "/bin/" ) ||
-                normalized.Contains( "/obj/" ) ||
-                normalized.Contains( "/.git/" ) )
+                 normalized.Contains( "/bin/" ) ||
+                 normalized.Contains( "/obj/" ) ||
+                 normalized.Contains( "/.git/" ) )
             {
                 continue;
             }

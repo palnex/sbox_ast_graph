@@ -2,12 +2,13 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Editor.Core.Models;
+using Editor.Analysis.Models;
+using Editor.Analysis.Models.Blocks;
 
-namespace Editor.Core.Analysis;
+namespace Editor.Analysis;
 
 /// <summary>
-/// Result container for pathfinding between two nodes in the graph.
+/// Result container for shortest path search between two nodes.
 /// </summary>
 public class GraphPathResult
 {
@@ -35,14 +36,14 @@ public class GraphCycleResult
 }
 
 /// <summary>
-/// Core graph traversal and cycle detection algorithms (BFS, DFS).
+/// Graph traversal, pathfinding, and cycle detection algorithms.
 /// </summary>
 public static class GraphAlgorithms
 {
     /// <summary>
     /// Finds the shortest dependency path between two nodes using Breadth-First Search (BFS).
     /// </summary>
-    public static GraphPathResult FindShortestPath( DependencyGraph graph, string fromId, string toId, bool undirected = false )
+    public static GraphPathResult FindShortestPath( CodeGraph graph, string fromId, string toId, bool undirected = false )
     {
         var result = new GraphPathResult
         {
@@ -50,15 +51,21 @@ public static class GraphAlgorithms
             TargetNodeId = toId
         };
 
-        if ( graph.GetNode( fromId ) == null || graph.GetNode( toId ) == null )
+        var startNode = graph.GetNode( fromId );
+        var targetNode = graph.GetNode( toId );
+
+        if ( startNode == null || targetNode == null )
             return result;
+
+        string startKey = startNode.Id;
+        string targetKey = targetNode.Id;
 
         var queue = new Queue<string>();
         var visited = new HashSet<string>( StringComparer.OrdinalIgnoreCase );
         var parentEdge = new Dictionary<string, GraphEdge>( StringComparer.OrdinalIgnoreCase );
 
-        queue.Enqueue( fromId );
-        visited.Add( fromId );
+        queue.Enqueue( startKey );
+        visited.Add( startKey );
 
         bool found = false;
 
@@ -66,18 +73,21 @@ public static class GraphAlgorithms
         {
             var current = queue.Dequeue();
 
-            if ( string.Equals( current, toId, StringComparison.OrdinalIgnoreCase ) )
+            if ( string.Equals( current, targetKey, StringComparison.OrdinalIgnoreCase ) )
             {
                 found = true;
                 break;
             }
 
+            var currNode = graph.GetNode( current );
+            if ( currNode == null ) continue;
+
             var neighbors = new List<GraphEdge>();
-            neighbors.AddRange( graph.GetOutgoingEdges( current ) );
+            neighbors.AddRange( currNode.Relations.Outgoing );
 
             if ( undirected )
             {
-                neighbors.AddRange( graph.GetIncomingEdges( current ) );
+                neighbors.AddRange( currNode.Relations.Incoming );
             }
 
             foreach ( var edge in neighbors )
@@ -99,9 +109,9 @@ public static class GraphAlgorithms
             return result;
 
         result.Found = true;
-        string curr = toId;
+        string curr = targetKey;
 
-        while ( !string.Equals( curr, fromId, StringComparison.OrdinalIgnoreCase ) )
+        while ( !string.Equals( curr, startKey, StringComparison.OrdinalIgnoreCase ) )
         {
             if ( parentEdge.TryGetValue( curr, out var edge ) )
             {
@@ -119,9 +129,9 @@ public static class GraphAlgorithms
     }
 
     /// <summary>
-    /// Detects all unique circular dependency loops (A -> B -> C -> A) using Depth-First Search (DFS).
+    /// Detects all unique circular dependency loops (A -> B -> C -> A) using Depth-First Search.
     /// </summary>
-    public static List<GraphCycleResult> DetectCycles( DependencyGraph graph )
+    public static List<GraphCycleResult> DetectCycles( CodeGraph graph )
     {
         var states = new Dictionary<string, int>( StringComparer.OrdinalIgnoreCase ); // 0 = unvisited, 1 = visiting, 2 = visited
         var pathStack = new List<string>();
@@ -145,50 +155,54 @@ public static class GraphAlgorithms
     }
 
     private static void DfsCycle(
-        DependencyGraph graph,
-        string node,
+        CodeGraph graph,
+        string nodeKey,
         Dictionary<string, int> states,
         List<string> pathStack,
         HashSet<string> uniqueCycles,
         List<GraphCycleResult> results )
     {
-        states[node] = 1;
-        pathStack.Add( node );
+        states[nodeKey] = 1;
+        pathStack.Add( nodeKey );
 
-        foreach ( var edge in graph.GetOutgoingEdges( node ) )
+        var node = graph.GetNode( nodeKey );
+        if ( node != null )
         {
-            string target = edge.TargetId;
-
-            if ( !states.ContainsKey( target ) )
-                continue;
-
-            if ( states[target] == 1 )
+            foreach ( var edge in node.Relations.Outgoing )
             {
-                int startIndex = pathStack.IndexOf( target );
-                if ( startIndex != -1 )
-                {
-                    var cycleNodes = pathStack.Skip( startIndex ).ToList();
-                    cycleNodes.Add( target );
+                string target = edge.TargetId;
 
-                    string canonical = NormalizeCycle( cycleNodes );
-                    if ( uniqueCycles.Add( canonical ) )
+                if ( !states.ContainsKey( target ) )
+                    continue;
+
+                if ( states[target] == 1 )
+                {
+                    int startIndex = pathStack.IndexOf( target );
+                    if ( startIndex != -1 )
                     {
-                        results.Add( new GraphCycleResult
+                        var cycleNodes = pathStack.Skip( startIndex ).ToList();
+                        cycleNodes.Add( target );
+
+                        string canonical = NormalizeCycle( cycleNodes );
+                        if ( uniqueCycles.Add( canonical ) )
                         {
-                            CycleNodes = cycleNodes,
-                            Representation = canonical
-                        } );
+                            results.Add( new GraphCycleResult
+                            {
+                                CycleNodes = cycleNodes,
+                                Representation = canonical
+                            } );
+                        }
                     }
                 }
-            }
-            else if ( states[target] == 0 )
-            {
-                DfsCycle( graph, target, states, pathStack, uniqueCycles, results );
+                else if ( states[target] == 0 )
+                {
+                    DfsCycle( graph, target, states, pathStack, uniqueCycles, results );
+                }
             }
         }
 
         pathStack.RemoveAt( pathStack.Count - 1 );
-        states[node] = 2;
+        states[nodeKey] = 2;
     }
 
     private static string NormalizeCycle( List<string> cycleNodes )

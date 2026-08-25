@@ -1,7 +1,7 @@
-namespace Editor.Core.Models;
+namespace Editor.Analysis.Models;
 
 /// <summary>
-/// Defines where the type or asset originates from.
+/// Defines where the analyzed type originates from.
 /// </summary>
 public enum NodeOrigin
 {
@@ -21,7 +21,7 @@ public enum NodeOrigin
     EngineEditor,
 
     /// <summary>
-    /// Standard .NET runtime primitives and collections (System.*, Microsoft.*).
+    /// Standard .NET runtime primitives (System.*, Microsoft.*).
     /// </summary>
     SystemPrimitive,
 
@@ -98,7 +98,7 @@ public enum RelationKind
     Instantiates,
 
     /// <summary>
-    /// Direct field reference (holding a reference to type).
+    /// Direct field reference.
     /// </summary>
     FieldReference,
 
@@ -118,17 +118,22 @@ public enum RelationKind
     SingletonAccess,
 
     /// <summary>
+    /// Accessing component via Components.Get&lt;T&gt;() or GetComponent&lt;T&gt;().
+    /// </summary>
+    ComponentFetch,
+
+    /// <summary>
     /// Event or Action subscription (+= / -=).
     /// </summary>
     EventSubscription,
 
     /// <summary>
-    /// Usage of a custom UI component inside .razor markup tags (e.g., &lt;CustomWidget /&gt;).
+    /// Usage of a custom UI component inside .razor markup tags (e.g. &lt;CustomWidget /&gt;).
     /// </summary>
     RazorMarkupTag,
 
     /// <summary>
-    /// Dependency extracted from generic argument (e.g., List&lt;T&gt; -> T).
+    /// Dependency extracted from generic argument (e.g. List&lt;T&gt; -> T).
     /// </summary>
     GenericArgument
 }

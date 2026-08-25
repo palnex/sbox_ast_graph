@@ -1,9 +1,10 @@
 #nullable enable
 using System;
 using System.Collections.Generic;
-using Editor.Core.Models;
 using ArchitectureVisualizer.UI.CanvasEngine.Models;
 using ArchitectureVisualizer.UI;
+using Editor.Analysis.Models;
+using Editor.Analysis.Models.Blocks;
 using Editor;
 using Sandbox;
 
@@ -21,33 +22,36 @@ public sealed class GraphFilterOptions
 
 public static class GraphCanvasAdapter
 {
-    public static void PopulateCanvas( CanvasWidget canvas, DependencyGraph graph, GraphFilterOptions? options = null )
+    public static void PopulateCanvas( CanvasWidget canvas, CodeGraph graph, GraphFilterOptions? options = null )
     {
         options ??= new GraphFilterOptions();
         canvas.Clear();
 
-        var matchingNodes = new List<GraphNode>();
-        var idToIndexMap = new Dictionary<string, int>();
+        var matchingNodes = new List<NodeBlock>();
+        var idToIndexMap = new Dictionary<string, int>( StringComparer.OrdinalIgnoreCase );
 
         // 1. Filter Nodes
         foreach ( var node in graph.Nodes.Values )
         {
-            if ( !options.IncludeSystemPrimitives && node.Origin == NodeOrigin.SystemPrimitive )
+            var header = node.Header;
+
+            if ( !options.IncludeSystemPrimitives && header.Origin == NodeOrigin.SystemPrimitive )
                 continue;
 
-            if ( options.UserCodeOnly && node.Origin != NodeOrigin.UserProject )
+            if ( options.UserCodeOnly && header.Origin != NodeOrigin.UserProject )
                 continue;
 
-            if ( options.ComponentsOnly && node.Category != SandboxTypeCategory.SceneComponent )
+            if ( options.ComponentsOnly && header.Category != SandboxTypeCategory.SceneComponent )
                 continue;
 
-            if ( options.RazorOnly && node.Category != SandboxTypeCategory.UiPanel && node.Category != SandboxTypeCategory.UiPanelComponent )
+            if ( options.RazorOnly && header.Category != SandboxTypeCategory.UiPanel && header.Category != SandboxTypeCategory.UiPanelComponent )
                 continue;
 
             if ( !string.IsNullOrWhiteSpace( options.SearchQuery ) )
             {
-                bool match = node.Name.Contains( options.SearchQuery, StringComparison.OrdinalIgnoreCase ) ||
-                             node.Namespace.Contains( options.SearchQuery, StringComparison.OrdinalIgnoreCase );
+                bool match = header.Name.Contains( options.SearchQuery, StringComparison.OrdinalIgnoreCase ) ||
+                             header.Namespace.Contains( options.SearchQuery, StringComparison.OrdinalIgnoreCase ) ||
+                             header.Title.Contains( options.SearchQuery, StringComparison.OrdinalIgnoreCase );
                 if ( !match ) continue;
             }
 
@@ -67,8 +71,9 @@ public static class GraphCanvasAdapter
 
         for ( int i = 0; i < matchingNodes.Count; i++ )
         {
-            var gn = matchingNodes[i];
-            int degree = Math.Max( 1, graph.GetOutgoingEdges( gn.Id ).Count + graph.GetIncomingEdges( gn.Id ).Count );
+            var node = matchingNodes[i];
+            var header = node.Header;
+            int degree = Math.Max( 1, node.Relations.OutgoingCount + node.Relations.IncomingCount );
 
             float phi = i * goldenAngle;
             float r = spacing * MathF.Sqrt( i + 1 );
@@ -83,36 +88,38 @@ public static class GraphCanvasAdapter
                 Velocity = Vector2.Zero,
                 Radius = radius,
                 ZLevel = zLevel,
-                Shape = GetCategoryShape( gn.Category ),
+                Shape = GetCategoryShape( header.Category ),
                 Flags = NodeFlags.None
             };
 
+            // Use custom icon from [Icon] attribute or fallback to category icon
+            string icon = !string.IsNullOrWhiteSpace( header.Icon ) ? header.Icon : GetCategoryIcon( header.Category );
+
             NodePayload payload = new()
             {
-                Id = gn.Id,
-                Title = gn.Name,
-                Subtitle = gn.Namespace,
-                Summary = gn.Summary,
-                FilePath = gn.FilePath,
-                LineNumber = 1,
-                AccentColor = GetCategoryColor( gn.Category ),
-                Icon = GetCategoryIcon( gn.Category ),
+                Id = header.Id,
+                Title = header.Title,
+                Subtitle = header.Namespace,
+                Summary = header.Summary,
+                FilePath = header.FilePath,
+                LineNumber = header.LineNumber > 0 ? header.LineNumber : 1,
+                AccentColor = GetCategoryColor( header.Category ),
+                Icon = icon,
                 TotalDegree = degree,
                 PhysicsMass = 1.0f + (degree * 0.25f),
-                UserData = gn
+                UserData = node
             };
 
             int idx = canvas.Registry.Allocate( in spatial, payload );
-            idToIndexMap[gn.Id] = idx;
+            idToIndexMap[node.Id] = idx;
         }
 
-        // 3. Allocate Edges with dynamic patterns
-        foreach ( var gn in matchingNodes )
+        // 3. Allocate Edges with dynamic styles
+        foreach ( var node in matchingNodes )
         {
-            if ( !idToIndexMap.TryGetValue( gn.Id, out int srcIdx ) ) continue;
+            if ( !idToIndexMap.TryGetValue( node.Id, out int srcIdx ) ) continue;
 
-            var outgoing = graph.GetOutgoingEdges( gn.Id );
-            foreach ( var edge in outgoing )
+            foreach ( var edge in node.Relations.Outgoing )
             {
                 if ( !idToIndexMap.TryGetValue( edge.TargetId, out int dstIdx ) ) continue;
 
@@ -184,6 +191,7 @@ public static class GraphCanvasAdapter
         RelationKind.RazorMarkupTag => "<tag />",
         RelationKind.EventSubscription => "+=",
         RelationKind.Instantiates => "new",
+        RelationKind.ComponentFetch => "GetComponent",
         _ => null
     };
 
@@ -193,6 +201,7 @@ public static class GraphCanvasAdapter
         RelationKind.RazorMarkupTag => new Color( 1.0f, 0.62f, 0.26f, 0.8f ),
         RelationKind.EventSubscription => new Color( 0.68f, 0.38f, 0.95f, 0.8f ),
         RelationKind.Instantiates => new Color( 0.18f, 0.80f, 0.44f, 0.7f ),
+        RelationKind.ComponentFetch => new Color( 0.95f, 0.55f, 0.15f, 0.8f ),
         _ => new Color( 0.35f, 0.42f, 0.55f, 0.45f )
     };
 }

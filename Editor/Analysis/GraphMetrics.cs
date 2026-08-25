@@ -2,12 +2,12 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Editor.Core.Models;
+using Editor.Analysis.Models;
 
-namespace Editor.Core.Analysis;
+namespace Editor.Analysis;
 
 /// <summary>
-/// Metric report detailing architectural complexity, hubs, God classes, and dead code.
+/// Architecture complexity report identifying key hubs, God classes, and isolated types.
 /// </summary>
 public class ArchitectureMetricsReport
 {
@@ -19,39 +19,28 @@ public class ArchitectureMetricsReport
 }
 
 /// <summary>
-/// Calculates architectural metrics and health indicators on the dependency graph.
+/// Calculates architectural health metrics on the dependency graph.
 /// </summary>
 public static class GraphMetrics
 {
-    /// <summary>
-    /// Computes in-degree (Hubs), out-degree (God Classes), and zero-degree (Isolated / Dead Code) metrics.
-    /// </summary>
-    public static ArchitectureMetricsReport Calculate( DependencyGraph graph, int topCount = 5 )
+    public static ArchitectureMetricsReport Calculate( CodeGraph graph, int topCount = 5 )
     {
         var inDegree = new Dictionary<string, int>( StringComparer.OrdinalIgnoreCase );
         var outDegree = new Dictionary<string, int>( StringComparer.OrdinalIgnoreCase );
 
-        foreach ( var node in graph.Nodes.Keys )
+        foreach ( var node in graph.Nodes.Values )
         {
-            inDegree[node] = 0;
-            outDegree[node] = 0;
+            inDegree[node.Id] = node.Relations.IncomingCount;
+            outDegree[node.Id] = node.Relations.OutgoingCount;
         }
 
-        foreach ( var edge in graph.Edges )
-        {
-            if ( outDegree.ContainsKey( edge.SourceId ) ) outDegree[edge.SourceId]++;
-            if ( inDegree.ContainsKey( edge.TargetId ) ) inDegree[edge.TargetId]++;
-        }
-
-        var report = new ArchitectureMetricsReport
+        return new ArchitectureMetricsReport
         {
             TotalNodes = graph.Nodes.Count,
             TotalEdges = graph.Edges.Count,
             TopHubs = inDegree.OrderByDescending( kv => kv.Value ).Take( topCount ).ToList(),
             TopGodNodes = outDegree.OrderByDescending( kv => kv.Value ).Take( topCount ).ToList(),
-            IsolatedNodes = graph.Nodes.Keys.Where( k => inDegree[k] == 0 && outDegree[k] == 0 ).ToList()
+            IsolatedNodes = graph.Nodes.Keys.Where( k => inDegree.GetValueOrDefault( k ) == 0 && outDegree.GetValueOrDefault( k ) == 0 ).ToList()
         };
-
-        return report;
     }
 }

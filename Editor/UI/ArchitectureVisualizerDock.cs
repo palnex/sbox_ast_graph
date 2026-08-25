@@ -2,8 +2,9 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using Editor.Core;
-using Editor.Core.Models;
+using Editor.Analysis;
+using Editor.Analysis.Models;
+using Editor.Analysis.Models.Blocks;
 using ArchitectureVisualizer.UI.Bridge;
 using ArchitectureVisualizer.UI.CanvasEngine.Models;
 using ArchitectureVisualizer.UI;
@@ -62,6 +63,12 @@ public sealed class ArchitectureVisualizerDock : Widget
         {
             if ( idx < 0 || idx >= _canvas.Registry.Count ) return;
             var payload = _canvas.Registry.GetPayload( idx );
+
+            // If we have NodeBlock attached in UserData, use its built-in navigation
+            if ( payload.UserData is NodeBlock nodeBlock && nodeBlock.OpenInEditor() )
+                return;
+
+            // Fallback manual path resolution
             if ( !string.IsNullOrEmpty( payload.FilePath ) )
             {
                 string path = payload.FilePath;
@@ -91,12 +98,12 @@ public sealed class ArchitectureVisualizerDock : Widget
             _filters.IncludeSystemPrimitives = _topHud.IncludeSystemPrimitives;
             _filters.ComponentsOnly = _topHud.FilterComponentsOnly;
             _filters.RazorOnly = _topHud.FilterRazorOnly;
-            RefreshCanvas( preservePositions: true );
+            RefreshCanvas( preservePositions: false );
         };
 
         _topHud.OnRebuildRequested += () =>
         {
-            DependencyGraphEngine.Rebuild();
+            CodeAnalysis.Rebuild();
             RefreshCanvas( preservePositions: false );
         };
 
@@ -124,7 +131,7 @@ public sealed class ArchitectureVisualizerDock : Widget
     private void RefreshCanvas( bool preservePositions )
     {
         if ( _canvas == null ) return;
-        var graph = DependencyGraphEngine.Current;
+        var graph = CodeAnalysis.Graph;
         if ( graph == null ) return;
 
         Dictionary<string, (Vector2 Pos, bool Pinned)>? savedState = null;
