@@ -1,50 +1,45 @@
 #nullable enable
+using System.Collections.Generic;
 using Editor.Analysis.Internal.Navigation;
 
 namespace Editor.Analysis.Models.Blocks;
 
 /// <summary>
-/// Unified Node Data Container combining all structured data blocks.
+/// Unified Fractal CodeBlock unifying Body (Anatomy), Wires (Semantics), and Activity (Telemetry).
 /// </summary>
 public class NodeBlock
 {
-    /// <summary>
-    /// Identity, display title, icon, summary, and source code location.
-    /// </summary>
-    public HeaderBlock Header { get; set; } = new();
+    public FractalLevel Level { get; set; } = FractalLevel.Class;
 
-    /// <summary>
-    /// Custom attributes decorating the type.
-    /// </summary>
-    public AttributeBlock Attributes { get; set; } = new();
+    /// <summary> 1. BODY: Static Identity and Location </summary>
+    public BodyBlock Body { get; set; } = new();
 
-    /// <summary>
-    /// Declared properties, methods, and fields.
-    /// </summary>
-    public MemberBlock Members { get; set; } = new();
-
-    /// <summary>
-    /// Incoming and outgoing dependency connections.
-    /// </summary>
+    /// <summary> 2. WIRES: Semantic Connections (Agent -> Action -> Recipient) </summary>
     public RelationBlock Relations { get; set; } = new();
 
-    /// <summary>
-    /// Unique identifier shortcut.
-    /// </summary>
-    public string Id => Header.Id;
+    /// <summary> 3. ACTIVITY: Live Telemetry and Thermal Pulse </summary>
+    public TelemetryActivity Activity { get; set; } = new();
 
-    /// <summary>
-    /// Short name shortcut.
-    /// </summary>
-    public string Name => Header.Name;
+    /// <summary> Custom attributes ([Property], [RequireComponent], [Rpc]) </summary>
+    public AttributeBlock Attributes { get; set; } = new();
 
-    /// <summary>
-    /// Opens the source code of this type directly in the user's IDE at the declaration line.
-    /// </summary>
+    /// <summary> Declared properties, methods, and fields </summary>
+    public MemberBlock Members { get; set; } = new();
+
+    /// <summary> Fractal Child Entities (e.g. Methods inside a Class) </summary>
+    public List<NodeBlock> Children { get; set; } = new();
+
+    // Direct Convenience Shortcuts
+    public string DocId => Body.DocId;
+    public string Id => Body.DocId;
+    public string Name => Body.Name;
+    public BodyBlock Header => Body; // Compatibility with HeaderBlock
+
+    /// <summary> Opens the source code of this entity directly in VS Code / Rider. </summary>
     public bool OpenInEditor()
     {
-        return CodeNavigator.OpenFile( Header.FilePath, Header.LineNumber );
+        return CodeNavigator.OpenFile( Body.FilePath, Body.LineNumber );
     }
 
-    public override string ToString() => $"[{Header.Origin}:{Header.Category}] {Header.Id}";
+    public override string ToString() => $"[{Body.Origin}:{Body.Category}] {Body.DocId}";
 }

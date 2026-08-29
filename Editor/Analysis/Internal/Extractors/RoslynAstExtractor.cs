@@ -11,89 +11,87 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 namespace Editor.Analysis.Internal.Extractors;
 
 /// <summary>
-/// Deep Roslyn AST Walker analyzing fields, properties, method signatures, local variables, component fetches, and calls.
+/// 100% True Semantic Roslyn Extractor. Operates strictly on compiler symbols, types, and semantic facts with zero string heuristics.
 /// </summary>
-public class RoslynAstExtractor : CSharpSyntaxWalker
+public class RoslynSemanticExtractor : CSharpSyntaxWalker
 {
     private readonly CodeGraph _graph;
+    private readonly SemanticModel _semanticModel;
     private readonly string _filePath;
 
-    private readonly Stack<string> _typeStack = new();
+    private readonly Stack<INamedTypeSymbol> _typeSymbolStack = new();
 
-    // Local scope variable tracking: variableName -> TypeName (e.g. "spawner" -> "EnemySpawner")
-    private readonly Dictionary<string, string> _localVariableTypes = new( StringComparer.OrdinalIgnoreCase );
-
-    public RoslynAstExtractor( CodeGraph graph, string filePath )
+    public RoslynSemanticExtractor( CodeGraph graph, SemanticModel semanticModel, string filePath )
     {
         _graph = graph;
+        _semanticModel = semanticModel;
         _filePath = filePath;
     }
 
-    private string? CurrentType => _typeStack.Count > 0 ? _typeStack.Peek() : null;
+    private INamedTypeSymbol? CurrentTypeSymbol => _typeSymbolStack.Count > 0 ? _typeSymbolStack.Peek() : null;
 
     // ==========================================
-    // 1. TYPE DECLARATIONS & BASE TYPES
+    // 1. TYPE DECLARATIONS (Classes, Structs, Interfaces)
     // ==========================================
 
     public override void VisitClassDeclaration( ClassDeclarationSyntax node )
     {
-        string className = node.Identifier.Text;
-        EnsureUserNodeRegistered( className, SandboxTypeCategory.Class, node.GetLocation() );
-
-        // Extract Base types / Interfaces from declaration (e.g. class Player : Component, IDamageable)
-        if ( node.BaseList != null )
+        if ( _semanticModel.GetDeclaredSymbol( node ) is INamedTypeSymbol classSymbol )
         {
-            foreach ( var baseType in node.BaseList.Types )
-            {
-                foreach ( var target in TypeResolver.ExtractTypes( baseType.Type ) )
-                {
-                    AddResolvedEdge( className, target, RelationKind.Inherits, "Base / Interface", baseType.GetLocation() );
-                }
-            }
+            RegisterTypeSymbol( classSymbol, SandboxTypeCategory.Class, node.GetLocation() );
+            _typeSymbolStack.Push( classSymbol );
+            base.VisitClassDeclaration( node );
+            _typeSymbolStack.Pop();
         }
-
-        _typeStack.Push( className );
-        base.VisitClassDeclaration( node );
-        _typeStack.Pop();
+        else
+        {
+            base.VisitClassDeclaration( node );
+        }
     }
 
     public override void VisitStructDeclaration( StructDeclarationSyntax node )
     {
-        string structName = node.Identifier.Text;
-        EnsureUserNodeRegistered( structName, SandboxTypeCategory.Struct, node.GetLocation() );
-
-        _typeStack.Push( structName );
-        base.VisitStructDeclaration( node );
-        _typeStack.Pop();
+        if ( _semanticModel.GetDeclaredSymbol( node ) is INamedTypeSymbol structSymbol )
+        {
+            RegisterTypeSymbol( structSymbol, SandboxTypeCategory.Struct, node.GetLocation() );
+            _typeSymbolStack.Push( structSymbol );
+            base.VisitStructDeclaration( node );
+            _typeSymbolStack.Pop();
+        }
+        else
+        {
+            base.VisitStructDeclaration( node );
+        }
     }
 
     public override void VisitInterfaceDeclaration( InterfaceDeclarationSyntax node )
     {
-        string ifaceName = node.Identifier.Text;
-        EnsureUserNodeRegistered( ifaceName, SandboxTypeCategory.Interface, node.GetLocation() );
-
-        _typeStack.Push( ifaceName );
-        base.VisitInterfaceDeclaration( node );
-        _typeStack.Pop();
+        if ( _semanticModel.GetDeclaredSymbol( node ) is INamedTypeSymbol ifaceSymbol )
+        {
+            RegisterTypeSymbol( ifaceSymbol, SandboxTypeCategory.Interface, node.GetLocation() );
+            _typeSymbolStack.Push( ifaceSymbol );
+            base.VisitInterfaceDeclaration( node );
+            _typeSymbolStack.Pop();
+        }
+        else
+        {
+            base.VisitInterfaceDeclaration( node );
+        }
     }
 
     // ==========================================
-    // 2. FIELDS & PROPERTIES DECLARATIONS
+    // 2. FIELDS & PROPERTIES (True Symbol References)
     // ==========================================
 
     public override void VisitFieldDeclaration( FieldDeclarationSyntax node )
     {
-        if ( CurrentType != null )
+        if ( CurrentTypeSymbol != null )
         {
-            foreach ( var target in TypeResolver.ExtractTypes( node.Declaration.Type ) )
+            foreach ( var variable in node.Declaration.Variables )
             {
-                string varNames = string.Join( ", ", node.Declaration.Variables.Select( v => v.Identifier.Text ) );
-                AddResolvedEdge( CurrentType, target, RelationKind.FieldReference, $"Field '{varNames}'", node.GetLocation() );
-
-                // Store field name -> type for variable scope resolution
-                foreach ( var v in node.Declaration.Variables )
+                if ( _semanticModel.GetDeclaredSymbol( variable ) is IFieldSymbol fieldSymbol )
                 {
-                    _localVariableTypes[v.Identifier.Text] = target;
+                    AddSymbolDependencies( CurrentTypeSymbol, fieldSymbol.Type, RelationKind.FieldReference, $"Field '{fieldSymbol.Name}'", node.GetLocation() );
                 }
             }
         }
@@ -102,121 +100,56 @@ public class RoslynAstExtractor : CSharpSyntaxWalker
 
     public override void VisitPropertyDeclaration( PropertyDeclarationSyntax node )
     {
-        if ( CurrentType != null )
+        if ( CurrentTypeSymbol != null )
         {
-            foreach ( var target in TypeResolver.ExtractTypes( node.Type ) )
+            if ( _semanticModel.GetDeclaredSymbol( node ) is IPropertySymbol propSymbol )
             {
-                AddResolvedEdge( CurrentType, target, RelationKind.PropertyReference, $"Property '{node.Identifier.Text}'", node.GetLocation() );
-                _localVariableTypes[node.Identifier.Text] = target;
+                AddSymbolDependencies( CurrentTypeSymbol, propSymbol.Type, RelationKind.PropertyReference, $"Property '{propSymbol.Name}'", node.GetLocation() );
             }
         }
         base.VisitPropertyDeclaration( node );
     }
 
     // ==========================================
-    // 3. METHODS & CONSTRUCTOR SIGNATURES
+    // 3. METHODS, PARAMETERS, & RPCs
     // ==========================================
 
     public override void VisitMethodDeclaration( MethodDeclarationSyntax node )
     {
-        if ( CurrentType != null )
+        if ( CurrentTypeSymbol != null && _semanticModel.GetDeclaredSymbol( node ) is IMethodSymbol methodSymbol )
         {
-            // A. Method Return Type
-            foreach ( var retType in TypeResolver.ExtractTypes( node.ReturnType ) )
+            // Determine RelationKind based on true Roslyn attributes and async keyword
+            bool isRpc = methodSymbol.GetAttributes().Any( a => a.AttributeClass?.Name.Contains( "Rpc" ) == true );
+            var relationKind = isRpc ? RelationKind.RpcDispatch : (methodSymbol.IsAsync ? RelationKind.AsyncAwait : RelationKind.MethodCall);
+
+            // Return Type Dependencies
+            if ( methodSymbol.ReturnType.SpecialType != SpecialType.System_Void )
             {
-                AddResolvedEdge( CurrentType, retType, RelationKind.MethodCall, $"Return type of '{node.Identifier.Text}()'", node.ReturnType.GetLocation() );
+                AddSymbolDependencies( CurrentTypeSymbol, methodSymbol.ReturnType, relationKind, $"Returns from '{methodSymbol.Name}()'", node.ReturnType.GetLocation() );
             }
 
-            // B. Method Parameters
-            foreach ( var param in node.ParameterList.Parameters )
+            // Parameter Types Dependencies
+            foreach ( var parameter in methodSymbol.Parameters )
             {
-                if ( param.Type != null )
-                {
-                    foreach ( var paramType in TypeResolver.ExtractTypes( param.Type ) )
-                    {
-                        AddResolvedEdge( CurrentType, paramType, RelationKind.MethodCall, $"Param '{param.Identifier.Text}' in '{node.Identifier.Text}()'", param.GetLocation() );
-                        _localVariableTypes[param.Identifier.Text] = paramType;
-                    }
-                }
+                AddSymbolDependencies( CurrentTypeSymbol, parameter.Type, RelationKind.MethodCall, $"Param '{parameter.Name}' in '{methodSymbol.Name}()'", node.GetLocation() );
             }
         }
 
         base.VisitMethodDeclaration( node );
     }
 
-    public override void VisitConstructorDeclaration( ConstructorDeclarationSyntax node )
-    {
-        if ( CurrentType != null )
-        {
-            foreach ( var param in node.ParameterList.Parameters )
-            {
-                if ( param.Type != null )
-                {
-                    foreach ( var paramType in TypeResolver.ExtractTypes( param.Type ) )
-                    {
-                        AddResolvedEdge( CurrentType, paramType, RelationKind.MethodCall, $"Constructor param '{param.Identifier.Text}'", param.GetLocation() );
-                        _localVariableTypes[param.Identifier.Text] = paramType;
-                    }
-                }
-            }
-        }
-
-        base.VisitConstructorDeclaration( node );
-    }
-
     // ==========================================
-    // 4. LOCAL VARIABLE DECLARATIONS (var x = new Enemy())
-    // ==========================================
-
-    public override void VisitLocalDeclarationStatement( LocalDeclarationStatementSyntax node )
-    {
-        if ( CurrentType != null )
-        {
-            // Explicit type: Enemy e = ...
-            foreach ( var targetType in TypeResolver.ExtractTypes( node.Declaration.Type ) )
-            {
-                foreach ( var variable in node.Declaration.Variables )
-                {
-                    _localVariableTypes[variable.Identifier.Text] = targetType;
-                    AddResolvedEdge( CurrentType, targetType, RelationKind.FieldReference, $"Local '{variable.Identifier.Text}'", variable.GetLocation() );
-                }
-            }
-
-            // Inferred type: var e = new Enemy() or var c = Components.Get<Camera>()
-            foreach ( var variable in node.Declaration.Variables )
-            {
-                if ( variable.Initializer?.Value is ObjectCreationExpressionSyntax objCreation )
-                {
-                    foreach ( var targetType in TypeResolver.ExtractTypes( objCreation.Type ) )
-                    {
-                        _localVariableTypes[variable.Identifier.Text] = targetType;
-                    }
-                }
-                else if ( variable.Initializer?.Value is InvocationExpressionSyntax invoc )
-                {
-                    string? inferred = TryInferComponentOrFactoryType( invoc );
-                    if ( inferred != null )
-                    {
-                        _localVariableTypes[variable.Identifier.Text] = inferred;
-                    }
-                }
-            }
-        }
-
-        base.VisitLocalDeclarationStatement( node );
-    }
-
-    // ==========================================
-    // 5. OBJECT CREATION (new Monster(), new())
+    // 4. OBJECT CREATIONS (new MyClass())
     // ==========================================
 
     public override void VisitObjectCreationExpression( ObjectCreationExpressionSyntax node )
     {
-        if ( CurrentType != null )
+        if ( CurrentTypeSymbol != null )
         {
-            foreach ( var target in TypeResolver.ExtractTypes( node.Type ) )
+            var typeSymbol = _semanticModel.GetTypeInfo( node ).Type;
+            if ( typeSymbol != null )
             {
-                AddResolvedEdge( CurrentType, target, RelationKind.Instantiates, $"new {target}()", node.GetLocation() );
+                AddSymbolDependencies( CurrentTypeSymbol, typeSymbol, RelationKind.Instantiates, $"new {typeSymbol.Name}()", node.GetLocation() );
             }
         }
         base.VisitObjectCreationExpression( node );
@@ -224,58 +157,47 @@ public class RoslynAstExtractor : CSharpSyntaxWalker
 
     public override void VisitImplicitObjectCreationExpression( ImplicitObjectCreationExpressionSyntax node )
     {
-        if ( CurrentType != null && node.Parent is EqualsValueClauseSyntax eq && eq.Parent is VariableDeclaratorSyntax vd )
+        if ( CurrentTypeSymbol != null )
         {
-            if ( _localVariableTypes.TryGetValue( vd.Identifier.Text, out var target ) )
+            var typeSymbol = _semanticModel.GetTypeInfo( node ).Type;
+            if ( typeSymbol != null )
             {
-                AddResolvedEdge( CurrentType, target, RelationKind.Instantiates, $"new {target}()", node.GetLocation() );
+                AddSymbolDependencies( CurrentTypeSymbol, typeSymbol, RelationKind.Instantiates, $"new {typeSymbol.Name}()", node.GetLocation() );
             }
         }
         base.VisitImplicitObjectCreationExpression( node );
     }
 
     // ==========================================
-    // 6. INVOCATIONS, COMPONENT FETCH, & MEMBER ACCESS
+    // 5. INVOCATIONS & COMPONENT FETCHING
     // ==========================================
 
     public override void VisitInvocationExpression( InvocationExpressionSyntax node )
     {
-        if ( CurrentType != null )
+        if ( CurrentTypeSymbol != null )
         {
-            // A. Check for Components.Get<T>() / GetComponent<T>()
-            if ( node.Expression is MemberAccessExpressionSyntax memberAccess )
-            {
-                string methodName = memberAccess.Name.Identifier.Text;
+            var symbolInfo = _semanticModel.GetSymbolInfo( node );
+            var methodSymbol = symbolInfo.Symbol as IMethodSymbol ??
+                               (symbolInfo.CandidateSymbols.FirstOrDefault() as IMethodSymbol);
 
-                if ( memberAccess.Name is GenericNameSyntax genericMethod )
+            if ( methodSymbol != null )
+            {
+                var targetType = methodSymbol.ContainingType;
+
+                // Detect Components.Get<T>() / GetComponent<T>()
+                if ( methodSymbol.IsGenericMethod &&
+                     methodSymbol.Name is "Get" or "GetAll" or "GetComponent" or "GetComponentInChildren" or "GetOrCreate" &&
+                     (targetType.Name.Contains( "Component" ) || targetType.Name.Contains( "GameObject" ) || targetType.Name.Contains( "Scene" )) )
                 {
-                    if ( methodName is "Get" or "GetAll" or "GetComponent" or "GetComponentInChildren" or "GetComponentInParent" or "GetOrCreate" )
+                    foreach ( var typeArg in methodSymbol.TypeArguments )
                     {
-                        foreach ( var arg in genericMethod.TypeArgumentList.Arguments )
-                        {
-                            foreach ( var compTarget in TypeResolver.ExtractTypes( arg ) )
-                            {
-                                AddResolvedEdge( CurrentType, compTarget, RelationKind.ComponentFetch, $"Components.Get<{compTarget}>()", node.GetLocation() );
-                            }
-                        }
+                        AddSymbolDependencies( CurrentTypeSymbol, typeArg, RelationKind.ComponentFetch, $"Components.Get<{typeArg.Name}>()", node.GetLocation() );
                     }
                 }
-                else
+                // Direct Method Call on Concrete Type (resolves GameManager.Instance automatically!)
+                else if ( targetType != null )
                 {
-                    // B. Standard Method Invocations (target.Method() or Class.Method())
-                    string callerExpr = memberAccess.Expression.ToString();
-
-                    // 1. Try resolve variable from local/field tracker
-                    if ( _localVariableTypes.TryGetValue( callerExpr, out var resolvedClass ) )
-                    {
-                        AddResolvedEdge( CurrentType, resolvedClass, RelationKind.MethodCall, $"Method '{methodName}()'", node.GetLocation() );
-                    }
-                    // 2. Try direct static type call (Sound.Play, GameManager.Reset)
-                    else if ( !TypeResolver.IsPrimitive( callerExpr ) )
-                    {
-                        string cleanCaller = TypeResolver.GetShortName( callerExpr );
-                        AddResolvedEdge( CurrentType, cleanCaller, RelationKind.MethodCall, $"Method '{methodName}()'", node.GetLocation() );
-                    }
+                    AddSymbolDependencies( CurrentTypeSymbol, targetType, RelationKind.MethodCall, $"Method '{methodSymbol.Name}()'", node.GetLocation() );
                 }
             }
         }
@@ -283,154 +205,177 @@ public class RoslynAstExtractor : CSharpSyntaxWalker
         base.VisitInvocationExpression( node );
     }
 
-    public override void VisitMemberAccessExpression( MemberAccessExpressionSyntax node )
-    {
-        if ( CurrentType != null )
-        {
-            string memberName = node.Name.Identifier.Text;
-
-            // Singleton & Static Accessors (.Instance, .Current)
-            if ( memberName is "Instance" or "Current" )
-            {
-                string targetType = node.Expression.ToString();
-                if ( !TypeResolver.IsPrimitive( targetType ) )
-                {
-                    AddResolvedEdge( CurrentType, TypeResolver.GetShortName( targetType ), RelationKind.SingletonAccess, $".{memberName}", node.GetLocation() );
-                }
-            }
-        }
-
-        base.VisitMemberAccessExpression( node );
-    }
-
     // ==========================================
-    // 7. EVENT SUBSCRIPTIONS (+= / -=)
+    // 6. TRUE EVENT SUBSCRIPTIONS (+= / -=)
     // ==========================================
 
     public override void VisitAssignmentExpression( AssignmentExpressionSyntax node )
     {
-        if ( CurrentType != null && (node.IsKind( SyntaxKind.AddAssignmentExpression ) || node.IsKind( SyntaxKind.SubtractAssignmentExpression )) )
+        if ( CurrentTypeSymbol != null && (node.IsKind( SyntaxKind.AddAssignmentExpression ) || node.IsKind( SyntaxKind.SubtractAssignmentExpression )) )
         {
-            if ( node.Left is MemberAccessExpressionSyntax memberAccess )
-            {
-                string eventName = memberAccess.Name.Identifier.Text;
-                string caller = memberAccess.Expression.ToString();
+            var leftSymbol = _semanticModel.GetSymbolInfo( node.Left ).Symbol;
 
-                if ( _localVariableTypes.TryGetValue( caller, out var resolvedClass ) )
+            // FACT: Is the left symbol truly an Event or a Delegate/Action property?
+            if ( leftSymbol is IEventSymbol eventSymbol )
+            {
+                if ( eventSymbol.ContainingType != null )
                 {
                     string sign = node.IsKind( SyntaxKind.AddAssignmentExpression ) ? "+=" : "-=";
-                    AddResolvedEdge( CurrentType, resolvedClass, RelationKind.EventSubscription, $"Event '{eventName}' {sign}", node.GetLocation() );
-                }
-                else if ( !TypeResolver.IsPrimitive( caller ) )
-                {
-                    string sign = node.IsKind( SyntaxKind.AddAssignmentExpression ) ? "+=" : "-=";
-                    AddResolvedEdge( CurrentType, TypeResolver.GetShortName( caller ), RelationKind.EventSubscription, $"Event '{eventName}' {sign}", node.GetLocation() );
+                    AddSymbolDependencies( CurrentTypeSymbol, eventSymbol.ContainingType, RelationKind.EventSubscription, $"Event '{eventSymbol.Name}' {sign}", node.GetLocation() );
                 }
             }
+            else if ( leftSymbol is IPropertySymbol propSymbol && (propSymbol.Type.TypeKind == TypeKind.Delegate || propSymbol.Type.Name.Contains( "Action" )) )
+            {
+                if ( propSymbol.ContainingType != null )
+                {
+                    string sign = node.IsKind( SyntaxKind.AddAssignmentExpression ) ? "+=" : "-=";
+                    AddSymbolDependencies( CurrentTypeSymbol, propSymbol.ContainingType, RelationKind.EventSubscription, $"Action '{propSymbol.Name}' {sign}", node.GetLocation() );
+                }
+            }
+            // If it's a normal numeric property (e.g. stat.Level += count), it is ignored as standard arithmetic!
         }
 
         base.VisitAssignmentExpression( node );
     }
 
     // ==========================================
-    // 8. PATTERN MATCHING & CASTS (is Monster, as Weapon)
+    // 7. ASYNC AWAIT
     // ==========================================
 
-    public override void VisitIsPatternExpression( IsPatternExpressionSyntax node )
+    public override void VisitAwaitExpression( AwaitExpressionSyntax node )
     {
-        if ( CurrentType != null && node.Pattern is DeclarationPatternSyntax declPattern )
+        if ( CurrentTypeSymbol != null )
         {
-            foreach ( var target in TypeResolver.ExtractTypes( declPattern.Type ) )
+            var typeSymbol = _semanticModel.GetTypeInfo( node.Expression ).Type;
+            if ( typeSymbol != null )
             {
-                AddResolvedEdge( CurrentType, target, RelationKind.FieldReference, $"is {target}", node.GetLocation() );
+                AddSymbolDependencies( CurrentTypeSymbol, typeSymbol, RelationKind.AsyncAwait, "Task", "await async operation", node.GetLocation() );
             }
         }
-        base.VisitIsPatternExpression( node );
-    }
-
-    public override void VisitBinaryExpression( BinaryExpressionSyntax node )
-    {
-        if ( CurrentType != null && node.IsKind( SyntaxKind.AsExpression ) && node.Right is TypeSyntax typeSyntax )
-        {
-            foreach ( var target in TypeResolver.ExtractTypes( typeSyntax ) )
-            {
-                AddResolvedEdge( CurrentType, target, RelationKind.FieldReference, $"as {target}", node.GetLocation() );
-            }
-        }
-        base.VisitBinaryExpression( node );
+        base.VisitAwaitExpression( node );
     }
 
     // ==========================================
-    // HELPERS
+    // HELPER: SYMBOL REGISTRATION & UNWRAPPING
     // ==========================================
 
-    private string? TryInferComponentOrFactoryType( InvocationExpressionSyntax invoc )
+    private void RegisterTypeSymbol( INamedTypeSymbol symbol, SandboxTypeCategory category, Location location )
     {
-        if ( invoc.Expression is MemberAccessExpressionSyntax ma && ma.Name is GenericNameSyntax gn )
-        {
-            var firstArg = gn.TypeArgumentList.Arguments.FirstOrDefault();
-            if ( firstArg != null )
-            {
-                return TypeResolver.ExtractTypes( firstArg ).FirstOrDefault();
-            }
-        }
-        return null;
-    }
+        string docId = symbol.GetDocumentationCommentId() ?? $"T:{symbol.ToDisplayString()}";
+        var existing = _graph.GetNode( docId ) ?? _graph.GetNode( symbol.Name );
 
-    private void EnsureUserNodeRegistered( string typeName, SandboxTypeCategory category, Location location )
-    {
-        var existing = _graph.GetNode( typeName );
         int line = location.GetLineSpan().StartLinePosition.Line + 1;
 
         if ( existing == null )
         {
-            var node = new NodeBlock();
-            node.Header = new HeaderBlock
+            var node = new NodeBlock
             {
-                Id = typeName,
-                Name = typeName,
-                Title = typeName,
-                Category = category,
-                Origin = NodeOrigin.UserProject,
-                FilePath = _filePath,
-                LineNumber = line
+                Level = FractalLevel.Class,
+                Body = new BodyBlock
+                {
+                    DocId = docId,
+                    Name = symbol.Name,
+                    Namespace = symbol.ContainingNamespace?.ToDisplayString() ?? string.Empty,
+                    Title = symbol.Name,
+                    Category = category,
+                    Origin = NodeOrigin.UserProject,
+                    FilePath = _filePath,
+                    LineNumber = line,
+                    IsAbstract = symbol.IsAbstract,
+                    IsStatic = symbol.IsStatic,
+                    IsValueType = symbol.IsValueType
+                }
             };
+
             _graph.AddNode( node );
         }
-        else
+
+        // Base Class & Interface Declarations
+        if ( symbol.BaseType != null && symbol.BaseType.SpecialType == SpecialType.None )
         {
-            if ( string.IsNullOrEmpty( existing.Header.FilePath ) )
-            {
-                existing.Header.FilePath = _filePath;
-                existing.Header.LineNumber = line;
-            }
+            AddSymbolDependencies( symbol, symbol.BaseType, RelationKind.Inherits, "Base Class", location );
+        }
+
+        foreach ( var iface in symbol.Interfaces )
+        {
+            AddSymbolDependencies( symbol, iface, RelationKind.Implements, "Interface Implementation", location );
         }
     }
 
-    private void AddResolvedEdge( string source, string target, RelationKind kind, string details, Location location )
+    private void AddSymbolDependencies(
+        ITypeSymbol sourceSymbol,
+        ITypeSymbol? targetSymbol,
+        RelationKind kind,
+        string contextDetails,
+        Location location )
     {
-        if ( string.Equals( source, target, StringComparison.OrdinalIgnoreCase ) )
-            return;
+        AddSymbolDependencies( sourceSymbol, targetSymbol, kind, targetSymbol?.Name ?? "", contextDetails, location );
+    }
 
-        if ( TypeResolver.IsPrimitive( target ) )
-            return;
+    private void AddSymbolDependencies(
+        ITypeSymbol sourceSymbol,
+        ITypeSymbol? targetSymbol,
+        RelationKind kind,
+        string instrument,
+        string condition,
+        Location location )
+    {
+        if ( targetSymbol == null ) return;
 
-        int line = location.GetLineSpan().StartLinePosition.Line + 1;
-
-        string resolvedTargetId = target;
-        var matchedNode = _graph.GetNode( target );
-        if ( matchedNode != null )
+        // Recursively unwrap Arrays (T[]) and Generics (List<T>, Dictionary<K, V>)
+        foreach ( var unwrapped in UnwrapTypeSymbol( targetSymbol ) )
         {
-            resolvedTargetId = matchedNode.Id;
+            if ( unwrapped.SpecialType != SpecialType.None &&
+                 unwrapped.SpecialType != SpecialType.System_Object )
+            {
+                continue; // Skip system primitives (int, string, bool, float, etc.)
+            }
+
+            if ( SymbolEqualityComparer.Default.Equals( sourceSymbol, unwrapped ) )
+                continue;
+
+            string sourceDocId = sourceSymbol.GetDocumentationCommentId() ?? $"T:{sourceSymbol.ToDisplayString()}";
+            string targetDocId = unwrapped.GetDocumentationCommentId() ?? $"T:{unwrapped.ToDisplayString()}";
+
+            int line = location.GetLineSpan().StartLinePosition.Line + 1;
+            string actualInstrument = !string.IsNullOrEmpty( instrument ) ? instrument : unwrapped.Name;
+
+            _graph.AddEdge( new SemanticWire
+            {
+                AgentDocId = sourceDocId,
+                Action = kind,
+                RecipientDocId = targetDocId,
+                Instrument = actualInstrument,
+                Condition = condition,
+                LineNumber = line
+            } );
+        }
+    }
+
+    private static IEnumerable<ITypeSymbol> UnwrapTypeSymbol( ITypeSymbol typeSymbol )
+    {
+        if ( typeSymbol is IArrayTypeSymbol arrayType )
+        {
+            foreach ( var inner in UnwrapTypeSymbol( arrayType.ElementType ) )
+                yield return inner;
+            yield break;
         }
 
-        _graph.AddEdge( new GraphEdge
+        if ( typeSymbol is INamedTypeSymbol namedType && namedType.IsGenericType )
         {
-            SourceId = source,
-            TargetId = resolvedTargetId,
-            Kind = kind,
-            Details = details,
-            LineNumber = line
-        } );
+            if ( !namedType.ContainingNamespace?.ToDisplayString().StartsWith( "System.Collections" ) == true )
+            {
+                yield return namedType;
+            }
+
+            foreach ( var typeArg in namedType.TypeArguments )
+            {
+                foreach ( var inner in UnwrapTypeSymbol( typeArg ) )
+                    yield return inner;
+            }
+            yield break;
+        }
+
+        yield return typeSymbol;
     }
 }

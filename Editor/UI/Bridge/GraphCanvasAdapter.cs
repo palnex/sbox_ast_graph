@@ -33,25 +33,25 @@ public static class GraphCanvasAdapter
         // 1. Filter Nodes
         foreach ( var node in graph.Nodes.Values )
         {
-            var header = node.Header;
+            var body = node.Body;
 
-            if ( !options.IncludeSystemPrimitives && header.Origin == NodeOrigin.SystemPrimitive )
+            if ( !options.IncludeSystemPrimitives && body.Origin == NodeOrigin.SystemPrimitive )
                 continue;
 
-            if ( options.UserCodeOnly && header.Origin != NodeOrigin.UserProject )
+            if ( options.UserCodeOnly && body.Origin != NodeOrigin.UserProject )
                 continue;
 
-            if ( options.ComponentsOnly && header.Category != SandboxTypeCategory.SceneComponent )
+            if ( options.ComponentsOnly && body.Category != SandboxTypeCategory.SceneComponent )
                 continue;
 
-            if ( options.RazorOnly && header.Category != SandboxTypeCategory.UiPanel && header.Category != SandboxTypeCategory.UiPanelComponent )
+            if ( options.RazorOnly && body.Category != SandboxTypeCategory.UiPanel && body.Category != SandboxTypeCategory.UiPanelComponent )
                 continue;
 
             if ( !string.IsNullOrWhiteSpace( options.SearchQuery ) )
             {
-                bool match = header.Name.Contains( options.SearchQuery, StringComparison.OrdinalIgnoreCase ) ||
-                             header.Namespace.Contains( options.SearchQuery, StringComparison.OrdinalIgnoreCase ) ||
-                             header.Title.Contains( options.SearchQuery, StringComparison.OrdinalIgnoreCase );
+                bool match = body.Name.Contains( options.SearchQuery, StringComparison.OrdinalIgnoreCase ) ||
+                             body.Namespace.Contains( options.SearchQuery, StringComparison.OrdinalIgnoreCase ) ||
+                             body.Title.Contains( options.SearchQuery, StringComparison.OrdinalIgnoreCase );
                 if ( !match ) continue;
             }
 
@@ -65,14 +65,14 @@ public static class GraphCanvasAdapter
             return;
         }
 
-        // 2. Fermat's Spiral Spatial Allocation
+        // 2. Fermat's Spiral Spatial Layout
         const float goldenAngle = 137.507764f * (MathF.PI / 180f);
         float spacing = 35f;
 
         for ( int i = 0; i < matchingNodes.Count; i++ )
         {
             var node = matchingNodes[i];
-            var header = node.Header;
+            var body = node.Body;
             int degree = Math.Max( 1, node.Relations.OutgoingCount + node.Relations.IncomingCount );
 
             float phi = i * goldenAngle;
@@ -88,22 +88,21 @@ public static class GraphCanvasAdapter
                 Velocity = Vector2.Zero,
                 Radius = radius,
                 ZLevel = zLevel,
-                Shape = GetCategoryShape( header.Category ),
+                Shape = GetCategoryShape( body.Category ),
                 Flags = NodeFlags.None
             };
 
-            // Use custom icon from [Icon] attribute or fallback to category icon
-            string icon = !string.IsNullOrWhiteSpace( header.Icon ) ? header.Icon : GetCategoryIcon( header.Category );
+            string icon = !string.IsNullOrWhiteSpace( body.Icon ) ? body.Icon : GetCategoryIcon( body.Category );
 
             NodePayload payload = new()
             {
-                Id = header.Id,
-                Title = header.Title,
-                Subtitle = header.Namespace,
-                Summary = header.Summary,
-                FilePath = header.FilePath,
-                LineNumber = header.LineNumber > 0 ? header.LineNumber : 1,
-                AccentColor = GetCategoryColor( header.Category ),
+                Id = body.DocId,
+                Title = body.Title,
+                Subtitle = body.Namespace,
+                Summary = body.Summary,
+                FilePath = body.FilePath,
+                LineNumber = body.LineNumber > 0 ? body.LineNumber : 1,
+                AccentColor = GetCategoryColor( body.Category ),
                 Icon = icon,
                 TotalDegree = degree,
                 PhysicsMass = 1.0f + (degree * 0.25f),
@@ -111,27 +110,28 @@ public static class GraphCanvasAdapter
             };
 
             int idx = canvas.Registry.Allocate( in spatial, payload );
-            idToIndexMap[node.Id] = idx;
+            idToIndexMap[body.DocId] = idx;
+            idToIndexMap[body.Name] = idx; // Lookup by simple name fallback
         }
 
-        // 3. Allocate Edges with dynamic styles
+        // 3. Allocate Semantic Wires with Visual Styles
         foreach ( var node in matchingNodes )
         {
-            if ( !idToIndexMap.TryGetValue( node.Id, out int srcIdx ) ) continue;
+            if ( !idToIndexMap.TryGetValue( node.DocId, out int srcIdx ) ) continue;
 
             foreach ( var edge in node.Relations.Outgoing )
             {
-                if ( !idToIndexMap.TryGetValue( edge.TargetId, out int dstIdx ) ) continue;
+                if ( !idToIndexMap.TryGetValue( edge.RecipientDocId, out int dstIdx ) ) continue;
 
-                var (edgeStyle, flowSpeed) = GetRelationStyle( edge.Kind );
+                var (edgeStyle, flowSpeed) = GetRelationStyle( edge.Action, edge.IsPolymorphicFanout );
 
                 var cEdge = new CanvasEdge( srcIdx, dstIdx )
                 {
-                    Label = GetRelationLabel( edge.Kind ),
-                    CustomColor = GetRelationColor( edge.Kind ),
+                    Label = GetRelationLabel( edge.Action, edge.IsPolymorphicFanout ),
+                    CustomColor = GetRelationColor( edge.Action, edge.IsPolymorphicFanout ),
                     Style = edgeStyle,
                     FlowSpeed = flowSpeed,
-                    DesiredSpringLength = 220f,
+                    DesiredSpringLength = edge.IsPolymorphicFanout ? 280f : 220f,
                     UserData = edge
                 };
 
@@ -153,14 +153,21 @@ public static class GraphCanvasAdapter
         _ => NodeShape.Circle
     };
 
-    public static (EdgeStyle Style, float Speed) GetRelationStyle( RelationKind kind ) => kind switch
+    public static (EdgeStyle Style, float Speed) GetRelationStyle( RelationKind kind, bool isPolyFanout )
     {
-        RelationKind.Inherits or RelationKind.Implements => (EdgeStyle.DirectionalArrows, 1.2f),
-        RelationKind.EventSubscription => (EdgeStyle.LaserPulse, 2.0f),
-        RelationKind.Instantiates => (EdgeStyle.Dashed, 1.0f),
-        RelationKind.RazorMarkupTag => (EdgeStyle.DoubleLine, 0.0f),
-        _ => (EdgeStyle.Solid, 0.0f)
-    };
+        if ( isPolyFanout ) return (EdgeStyle.Dashed, 0.8f); // Ghost dashed line for polymorphic fan-outs!
+
+        return kind switch
+        {
+            RelationKind.Inherits or RelationKind.Implements => (EdgeStyle.DirectionalArrows, 1.2f),
+            RelationKind.RpcDispatch => (EdgeStyle.LaserPulse, 3.0f),       // Fast laser pulse for Network RPC!
+            RelationKind.AsyncAwait => (EdgeStyle.Dashed, 0.5f),            // Slow dashed flow for Async/Await
+            RelationKind.EventSubscription => (EdgeStyle.LaserPulse, 1.8f),
+            RelationKind.Instantiates => (EdgeStyle.Dashed, 1.0f),
+            RelationKind.RazorMarkupTag => (EdgeStyle.DoubleLine, 0.0f),
+            _ => (EdgeStyle.Solid, 0.0f)
+        };
+    }
 
     public static string GetCategoryIcon( SandboxTypeCategory category ) => category switch
     {
@@ -184,24 +191,38 @@ public static class GraphCanvasAdapter
         _ => new Color( 0.55f, 0.60f, 0.70f )
     };
 
-    public static string? GetRelationLabel( RelationKind kind ) => kind switch
+    public static string? GetRelationLabel( RelationKind kind, bool isPolyFanout )
     {
-        RelationKind.Inherits => "inherits",
-        RelationKind.Implements => "implements",
-        RelationKind.RazorMarkupTag => "<tag />",
-        RelationKind.EventSubscription => "+=",
-        RelationKind.Instantiates => "new",
-        RelationKind.ComponentFetch => "GetComponent",
-        _ => null
-    };
+        if ( isPolyFanout ) return "┄┄[polymorphic]┄┄►";
 
-    public static Color GetRelationColor( RelationKind kind ) => kind switch
+        return kind switch
+        {
+            RelationKind.Inherits => "inherits",
+            RelationKind.Implements => "implements",
+            RelationKind.RpcDispatch => "[rpc]",
+            RelationKind.AsyncAwait => "await",
+            RelationKind.RazorMarkupTag => "<tag />",
+            RelationKind.EventSubscription => "+=",
+            RelationKind.Instantiates => "new",
+            RelationKind.ComponentFetch => "GetComponent",
+            _ => null
+        };
+    }
+
+    public static Color GetRelationColor( RelationKind kind, bool isPolyFanout )
     {
-        RelationKind.Inherits or RelationKind.Implements => new Color( 0.91f, 0.30f, 0.24f, 0.8f ),
-        RelationKind.RazorMarkupTag => new Color( 1.0f, 0.62f, 0.26f, 0.8f ),
-        RelationKind.EventSubscription => new Color( 0.68f, 0.38f, 0.95f, 0.8f ),
-        RelationKind.Instantiates => new Color( 0.18f, 0.80f, 0.44f, 0.7f ),
-        RelationKind.ComponentFetch => new Color( 0.95f, 0.55f, 0.15f, 0.8f ),
-        _ => new Color( 0.35f, 0.42f, 0.55f, 0.45f )
-    };
+        if ( isPolyFanout ) return new Color( 0.61f, 0.35f, 0.71f, 0.5f ); // Purple ghost wire
+
+        return kind switch
+        {
+            RelationKind.Inherits or RelationKind.Implements => new Color( 0.91f, 0.30f, 0.24f, 0.8f ),
+            RelationKind.RpcDispatch => new Color( 0.95f, 0.20f, 0.90f, 0.9f ),    // Neon Magenta for RPC
+            RelationKind.AsyncAwait => new Color( 0.20f, 0.80f, 0.95f, 0.75f ),    // Cyan for Async/Await
+            RelationKind.RazorMarkupTag => new Color( 1.0f, 0.62f, 0.26f, 0.8f ),
+            RelationKind.EventSubscription => new Color( 0.68f, 0.38f, 0.95f, 0.8f ),
+            RelationKind.Instantiates => new Color( 0.18f, 0.80f, 0.44f, 0.7f ),
+            RelationKind.ComponentFetch => new Color( 0.95f, 0.55f, 0.15f, 0.8f ),
+            _ => new Color( 0.35f, 0.42f, 0.55f, 0.45f )
+        };
+    }
 }

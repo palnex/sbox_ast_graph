@@ -11,7 +11,7 @@ using Sandbox.UI;
 namespace Editor.Analysis.Internal.Extractors;
 
 /// <summary>
-/// Extracts all engine and user type definitions, full member signatures, attributes, and deep hierarchy/call edges.
+/// Extracts runtime & editor type definitions, DocIds, member contracts, network realms, and polymorphic interfaces.
 /// </summary>
 public static class TypeLibraryExtractor
 {
@@ -24,27 +24,33 @@ public static class TypeLibraryExtractor
         foreach ( var typeDesc in allTypes )
         {
             var targetType = typeDesc.TargetType;
-            if ( targetType == null )
-                continue;
+            if ( targetType == null ) continue;
 
-            string id = GetTypeFqn( targetType );
+            string typeFqn = GetTypeFqn( targetType );
+            string typeDocId = TypeResolver.MakeTypeDocId( typeFqn );
             var origin = DetermineOrigin( targetType.Assembly );
             var category = DetermineCategory( targetType );
             var display = DisplayInfo.ForType( targetType );
 
-            var node = new NodeBlock();
+            var node = new NodeBlock
+            {
+                Level = FractalLevel.Class
+            };
 
-            // 1. Fill Header Block
+            // 1. Fill BODY
             string displayTitle = !string.IsNullOrWhiteSpace( typeDesc.Title ) ? typeDesc.Title : display.Name;
             if ( string.IsNullOrWhiteSpace( displayTitle ) ) displayTitle = typeDesc.Name;
 
-            node.Header = new HeaderBlock
+            var networkRealm = DetermineNetworkRealm( targetType );
+
+            node.Body = new BodyBlock
             {
-                Id = id,
+                DocId = typeDocId,
                 Name = typeDesc.Name,
                 Namespace = targetType.Namespace ?? string.Empty,
                 Origin = origin,
                 Category = category,
+                Realm = networkRealm,
                 Title = displayTitle,
                 Summary = !string.IsNullOrWhiteSpace( display.Description ) ? display.Description : (typeDesc.Description ?? string.Empty),
                 Icon = !string.IsNullOrWhiteSpace( display.Icon ) ? display.Icon : (typeDesc.Icon ?? string.Empty),
@@ -56,7 +62,7 @@ public static class TypeLibraryExtractor
                 IsValueType = typeDesc.IsValueType
             };
 
-            // 2. Fill Attribute Block
+            // 2. Attributes
             var rawAttributes = targetType.GetCustomAttributes( inherit: false );
             foreach ( var rawAttr in rawAttributes )
             {
@@ -69,10 +75,11 @@ public static class TypeLibraryExtractor
                 } );
             }
 
-            // 3. Properties + Property Reference Edges
+            // 3. Properties + Semantic Wires
             foreach ( var prop in typeDesc.Properties )
             {
                 bool hasPropertyAttr = prop.HasAttribute<PropertyAttribute>();
+                string propDocId = TypeResolver.MakePropertyDocId( typeFqn, prop.Name );
 
                 node.Members.Properties.Add( new PropertyItem
                 {
@@ -92,15 +99,17 @@ public static class TypeLibraryExtractor
                     foreach ( var unwrapped in UnwrapTypes( prop.PropertyType ) )
                     {
                         if ( IsPrimitive( unwrapped ) ) continue;
-                        string targetId = GetTypeFqn( unwrapped );
-                        if ( !string.Equals( id, targetId, StringComparison.OrdinalIgnoreCase ) )
+                        string targetDocId = TypeResolver.MakeTypeDocId( GetTypeFqn( unwrapped ) );
+
+                        if ( !string.Equals( typeDocId, targetDocId, StringComparison.OrdinalIgnoreCase ) )
                         {
-                            graph.AddEdge( new GraphEdge
+                            graph.AddEdge( new SemanticWire
                             {
-                                SourceId = id,
-                                TargetId = targetId,
-                                Kind = RelationKind.PropertyReference,
-                                Details = $"Property '{prop.Name}'",
+                                AgentDocId = typeDocId,
+                                Action = RelationKind.PropertyReference,
+                                RecipientDocId = targetDocId,
+                                Instrument = prop.PropertyType.Name,
+                                Condition = $"Property '{prop.Name}'",
                                 LineNumber = prop.SourceLine
                             } );
                         }
@@ -108,9 +117,12 @@ public static class TypeLibraryExtractor
                 }
             }
 
-            // 4. Methods + Return Type & Parameter Edges
+            // 4. Methods + Semantic Wires
             foreach ( var method in typeDesc.Methods )
             {
+                var methodParamTypes = method.Parameters?.Select( p => p.ParameterType != null ? p.ParameterType.Name : "object" ).ToList() ?? new List<string>();
+                string methodDocId = TypeResolver.MakeMethodDocId( typeFqn, method.Name, methodParamTypes );
+
                 var methodItem = new MethodItem
                 {
                     Name = method.Name,
@@ -121,22 +133,23 @@ public static class TypeLibraryExtractor
                     SourceLine = method.SourceLine
                 };
 
-                // Link Method Return Type
+                // Method Return Type Wire
                 if ( method.ReturnType != null && method.ReturnType != typeof( void ) )
                 {
                     foreach ( var unwrapped in UnwrapTypes( method.ReturnType ) )
                     {
                         if ( !IsPrimitive( unwrapped ) )
                         {
-                            string targetId = GetTypeFqn( unwrapped );
-                            if ( !string.Equals( id, targetId, StringComparison.OrdinalIgnoreCase ) )
+                            string targetDocId = TypeResolver.MakeTypeDocId( GetTypeFqn( unwrapped ) );
+                            if ( !string.Equals( typeDocId, targetDocId, StringComparison.OrdinalIgnoreCase ) )
                             {
-                                graph.AddEdge( new GraphEdge
+                                graph.AddEdge( new SemanticWire
                                 {
-                                    SourceId = id,
-                                    TargetId = targetId,
-                                    Kind = RelationKind.MethodCall,
-                                    Details = $"Returns from '{method.Name}()'",
+                                    AgentDocId = typeDocId,
+                                    Action = RelationKind.MethodCall,
+                                    RecipientDocId = targetDocId,
+                                    Instrument = $"Returns {method.ReturnType.Name}",
+                                    Condition = $"Method '{method.Name}()'",
                                     LineNumber = method.SourceLine
                                 } );
                             }
@@ -144,7 +157,7 @@ public static class TypeLibraryExtractor
                     }
                 }
 
-                // Link Method Parameters
+                // Method Parameter Wires
                 if ( method.Parameters != null )
                 {
                     foreach ( var param in method.Parameters )
@@ -164,15 +177,16 @@ public static class TypeLibraryExtractor
                             {
                                 if ( !IsPrimitive( unwrapped ) )
                                 {
-                                    string targetId = GetTypeFqn( unwrapped );
-                                    if ( !string.Equals( id, targetId, StringComparison.OrdinalIgnoreCase ) )
+                                    string targetDocId = TypeResolver.MakeTypeDocId( GetTypeFqn( unwrapped ) );
+                                    if ( !string.Equals( typeDocId, targetDocId, StringComparison.OrdinalIgnoreCase ) )
                                     {
-                                        graph.AddEdge( new GraphEdge
+                                        graph.AddEdge( new SemanticWire
                                         {
-                                            SourceId = id,
-                                            TargetId = targetId,
-                                            Kind = RelationKind.MethodCall,
-                                            Details = $"Param in '{method.Name}({paramName})'",
+                                            AgentDocId = typeDocId,
+                                            Action = RelationKind.MethodCall,
+                                            RecipientDocId = targetDocId,
+                                            Instrument = $"Param '{paramName}' ({param.ParameterType.Name})",
+                                            Condition = $"Method '{method.Name}'",
                                             LineNumber = method.SourceLine
                                         } );
                                     }
@@ -185,7 +199,7 @@ public static class TypeLibraryExtractor
                 node.Members.Methods.Add( methodItem );
             }
 
-            // 5. Fields + Field Type Edges
+            // 5. Fields
             foreach ( var field in typeDesc.Fields )
             {
                 node.Members.Fields.Add( new FieldItem
@@ -204,15 +218,16 @@ public static class TypeLibraryExtractor
                     {
                         if ( !IsPrimitive( unwrapped ) )
                         {
-                            string targetId = GetTypeFqn( unwrapped );
-                            if ( !string.Equals( id, targetId, StringComparison.OrdinalIgnoreCase ) )
+                            string targetDocId = TypeResolver.MakeTypeDocId( GetTypeFqn( unwrapped ) );
+                            if ( !string.Equals( typeDocId, targetDocId, StringComparison.OrdinalIgnoreCase ) )
                             {
-                                graph.AddEdge( new GraphEdge
+                                graph.AddEdge( new SemanticWire
                                 {
-                                    SourceId = id,
-                                    TargetId = targetId,
-                                    Kind = RelationKind.FieldReference,
-                                    Details = $"Field '{field.Name}'",
+                                    AgentDocId = typeDocId,
+                                    Action = RelationKind.FieldReference,
+                                    RecipientDocId = targetDocId,
+                                    Instrument = field.FieldType.Name,
+                                    Condition = $"Field '{field.Name}'",
                                     LineNumber = field.SourceLine
                                 } );
                             }
@@ -223,32 +238,42 @@ public static class TypeLibraryExtractor
 
             graph.AddNode( node );
 
-            // 6. Base Class Inheritance Edge
+            // 6. Base Class Inheritance Wire
             if ( typeDesc.BaseType?.TargetType != null && typeDesc.BaseType.TargetType != typeof( object ) )
             {
-                graph.AddEdge( new GraphEdge
+                graph.AddEdge( new SemanticWire
                 {
-                    SourceId = id,
-                    TargetId = GetTypeFqn( typeDesc.BaseType.TargetType ),
-                    Kind = RelationKind.Inherits,
-                    Details = "Base Class",
+                    AgentDocId = typeDocId,
+                    Action = RelationKind.Inherits,
+                    RecipientDocId = TypeResolver.MakeTypeDocId( GetTypeFqn( typeDesc.BaseType.TargetType ) ),
+                    Condition = "Base Class",
                     LineNumber = typeDesc.SourceLine
                 } );
             }
 
-            // 7. Interface Implementation Edges
+            // 7. Interface Implementation Wires + Polymorphic Indexing
             foreach ( var ifaceType in targetType.GetInterfaces() )
             {
-                graph.AddEdge( new GraphEdge
+                graph.AddEdge( new SemanticWire
                 {
-                    SourceId = id,
-                    TargetId = GetTypeFqn( ifaceType ),
-                    Kind = RelationKind.Implements,
-                    Details = "Interface Implementation",
+                    AgentDocId = typeDocId,
+                    Action = RelationKind.Implements,
+                    RecipientDocId = TypeResolver.MakeTypeDocId( GetTypeFqn( ifaceType ) ),
+                    Condition = "Interface Implementation",
                     LineNumber = typeDesc.SourceLine
                 } );
             }
         }
+    }
+
+    private static NetworkRealm DetermineNetworkRealm( Type type )
+    {
+        string str = type.ToString();
+        if ( type.GetCustomAttributes().Any( a => a.GetType().Name.Contains( "Authority" ) || a.GetType().Name.Contains( "Host" ) ) )
+            return NetworkRealm.HostOnly;
+        if ( type.GetCustomAttributes().Any( a => a.GetType().Name.Contains( "Client" ) ) )
+            return NetworkRealm.ClientOnly;
+        return NetworkRealm.Shared;
     }
 
     public static NodeOrigin DetermineOrigin( Assembly assembly )

@@ -2,13 +2,12 @@
 using System;
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
-using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace Editor.Analysis.Internal.Extractors;
 
 /// <summary>
-/// High-performance type name resolver and generic argument unwrapper for AST nodes.
+/// Generates ECMA-334 DocIds, normalizes type names, and unwraps complex generics.
 /// </summary>
 public static class TypeResolver
 {
@@ -24,18 +23,33 @@ public static class TypeResolver
         "Array", "Span", "ReadOnlySpan", "Memory", "ReadOnlyMemory"
     };
 
-    /// <summary>
-    /// Checks if a type name is a basic .NET primitive or generic collection container.
-    /// </summary>
     public static bool IsPrimitive( string? name )
     {
         if ( string.IsNullOrWhiteSpace( name ) ) return true;
         return SystemPrimitives.Contains( name );
     }
 
-    /// <summary>
-    /// Extracts all target type names from a TypeSyntax node, recursively unwrapping generics (List&lt;Enemy&gt; -&gt; Enemy).
-    /// </summary>
+    public static string MakeTypeDocId( string fullName )
+    {
+        return fullName.StartsWith( "T:" ) ? fullName : $"T:{fullName}";
+    }
+
+    public static string MakeMethodDocId( string typeFullName, string methodName, IEnumerable<string>? paramTypes = null )
+    {
+        string @params = paramTypes != null ? string.Join( ",", paramTypes ) : "";
+        return $"M:{typeFullName}.{methodName}({@params})";
+    }
+
+    public static string MakePropertyDocId( string typeFullName, string propName )
+    {
+        return $"P:{typeFullName}.{propName}";
+    }
+
+    public static string MakeFieldDocId( string typeFullName, string fieldName )
+    {
+        return $"F:{typeFullName}.{fieldName}";
+    }
+
     public static IEnumerable<string> ExtractTypes( TypeSyntax? typeSyntax )
     {
         if ( typeSyntax == null ) yield break;
@@ -53,12 +67,10 @@ public static class TypeResolver
                 break;
 
             case GenericNameSyntax genericName:
-                // Return generic container name if non-primitive
                 string genericClean = genericName.Identifier.Text;
                 if ( !IsPrimitive( genericClean ) )
                     yield return genericClean;
 
-                // Unwrap generic type arguments (e.g., T in List<T>)
                 foreach ( var arg in genericName.TypeArgumentList.Arguments )
                 {
                     foreach ( var inner in ExtractTypes( arg ) )
@@ -84,9 +96,6 @@ public static class TypeResolver
         }
     }
 
-    /// <summary>
-    /// Fallback parser for raw string signatures.
-    /// </summary>
     public static IEnumerable<string> ParseRawTypeString( string? raw )
     {
         if ( string.IsNullOrWhiteSpace( raw ) ) yield break;

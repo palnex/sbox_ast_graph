@@ -9,97 +9,83 @@ using Editor.Analysis.Models.Blocks;
 namespace Editor.Analysis.Internal.Extractors;
 
 /// <summary>
-/// Extracts UI component dependencies and inline C# expressions from .razor markup files.
+/// Extracts UI markup tags and embedded C# expressions from .razor files as SemanticWires.
 /// </summary>
 public static class RazorExtractor
 {
-    // Matches UI custom markup tags: <CustomWidget ... /> or <CustomWidget>
     private static readonly Regex TagRegex = new( @"<([A-Z][A-Za-z0-9_]*)\b", RegexOptions.Compiled );
+    private static readonly Regex CSharpExprRegex = new( @"@([A-Z][A-Za-z0-9_]*)\.", RegexOptions.Compiled );
 
-    // Matches embedded C# calls: @GameManager. or @PlayerState.
-    private static readonly Regex CSharpExpressionRegex = new( @"@([A-Z][A-Za-z0-9_]*)\.", RegexOptions.Compiled );
-
-    /// <summary>
-    /// Scans a .razor file on disk and registers RazorMarkupTag and MethodCall edges.
-    /// </summary>
     public static void Extract( string razorFilePath, CodeGraph graph )
     {
-        if ( !File.Exists( razorFilePath ) )
-            return;
+        if ( !File.Exists( razorFilePath ) ) return;
 
         string fileName = Path.GetFileNameWithoutExtension( razorFilePath );
+        string docId = TypeResolver.MakeTypeDocId( fileName );
         string content = File.ReadAllText( razorFilePath );
 
-        // Ensure this Razor component is registered in the graph
-        var existing = graph.GetNode( fileName );
+        var existing = graph.GetNode( docId ) ?? graph.GetNode( fileName );
         if ( existing == null )
         {
-            var node = new NodeBlock();
-            node.Header = new HeaderBlock
+            var node = new NodeBlock
             {
-                Id = fileName,
-                Name = fileName,
-                Title = fileName,
-                Category = SandboxTypeCategory.UiPanel,
-                Origin = NodeOrigin.UserProject,
-                FilePath = razorFilePath,
-                LineNumber = 1
+                Level = FractalLevel.Class,
+                Body = new BodyBlock
+                {
+                    DocId = docId,
+                    Name = fileName,
+                    Title = fileName,
+                    Category = SandboxTypeCategory.UiPanel,
+                    Origin = NodeOrigin.UserProject,
+                    FilePath = razorFilePath,
+                    LineNumber = 1
+                }
             };
             graph.AddNode( node );
         }
 
-        // 1. Scan UI markup tags (<Crosshair />, <InventoryGrid />)
-        var tagMatches = TagRegex.Matches( content );
+        // 1. UI Markup Tags (<Crosshair />, <InventoryGrid />)
         var seenTags = new HashSet<string>( StringComparer.OrdinalIgnoreCase );
-
-        foreach ( Match match in tagMatches )
+        foreach ( Match match in TagRegex.Matches( content ) )
         {
             string tagName = match.Groups[1].Value;
-
-            if ( string.Equals( tagName, fileName, StringComparison.OrdinalIgnoreCase ) )
-                continue;
-
-            if ( !seenTags.Add( tagName ) )
+            if ( string.Equals( tagName, fileName, StringComparison.OrdinalIgnoreCase ) || !seenTags.Add( tagName ) )
                 continue;
 
             var targetNode = graph.GetNode( tagName );
-            if ( targetNode != null )
+            string targetDocId = targetNode != null ? targetNode.DocId : TypeResolver.MakeTypeDocId( tagName );
+
+            graph.AddEdge( new SemanticWire
             {
-                graph.AddEdge( new GraphEdge
-                {
-                    SourceId = fileName,
-                    TargetId = targetNode.Id,
-                    Kind = RelationKind.RazorMarkupTag,
-                    Details = $"Markup tag <{tagName} />"
-                } );
-            }
+                AgentDocId = docId,
+                Action = RelationKind.RazorMarkupTag,
+                RecipientDocId = targetDocId,
+                Instrument = "UI Markup Tag",
+                Condition = $"<{tagName} />",
+                LineNumber = 1
+            } );
         }
 
-        // 2. Scan C# expressions inside markup (@GameSettings.SoundVolume)
-        var exprMatches = CSharpExpressionRegex.Matches( content );
+        // 2. Embedded C# Expressions (@GameSettings.Volume)
         var seenExprs = new HashSet<string>( StringComparer.OrdinalIgnoreCase );
-
-        foreach ( Match match in exprMatches )
+        foreach ( Match match in CSharpExprRegex.Matches( content ) )
         {
             string targetClass = match.Groups[1].Value;
-
-            if ( string.Equals( targetClass, fileName, StringComparison.OrdinalIgnoreCase ) )
-                continue;
-
-            if ( !seenExprs.Add( targetClass ) )
+            if ( string.Equals( targetClass, fileName, StringComparison.OrdinalIgnoreCase ) || !seenExprs.Add( targetClass ) )
                 continue;
 
             var targetNode = graph.GetNode( targetClass );
-            if ( targetNode != null )
+            string targetDocId = targetNode != null ? targetNode.DocId : TypeResolver.MakeTypeDocId( targetClass );
+
+            graph.AddEdge( new SemanticWire
             {
-                graph.AddEdge( new GraphEdge
-                {
-                    SourceId = fileName,
-                    TargetId = targetNode.Id,
-                    Kind = RelationKind.MethodCall,
-                    Details = $"Razor expression @{targetClass}."
-                } );
-            }
+                AgentDocId = docId,
+                Action = RelationKind.MethodCall,
+                RecipientDocId = targetDocId,
+                Instrument = "Razor Expression",
+                Condition = $"@{targetClass}.",
+                LineNumber = 1
+            } );
         }
     }
 }

@@ -8,19 +8,19 @@ using Editor.Analysis.Models.Blocks;
 namespace Editor.Analysis;
 
 /// <summary>
-/// Result container for shortest path search between two nodes.
+/// Result container for shortest path search between two entities.
 /// </summary>
 public class GraphPathResult
 {
     public bool Found { get; set; }
     public string StartNodeId { get; set; } = string.Empty;
     public string TargetNodeId { get; set; } = string.Empty;
-    public List<GraphEdge> Steps { get; set; } = new();
+    public List<SemanticWire> Steps { get; set; } = new();
 
     public override string ToString()
     {
         if ( !Found ) return $"No path between '{StartNodeId}' and '{TargetNodeId}'.";
-        return $"Path found ({Steps.Count} steps): " + string.Join( " -> ", Steps.Select( s => $"[{s.SourceId}]--({s.Kind})-->[{s.TargetId}]" ) );
+        return $"Path found ({Steps.Count} steps): " + string.Join( " -> ", Steps.Select( s => $"[{s.AgentDocId}]--({s.Action})-->[{s.RecipientDocId}]" ) );
     }
 }
 
@@ -57,12 +57,12 @@ public static class GraphAlgorithms
         if ( startNode == null || targetNode == null )
             return result;
 
-        string startKey = startNode.Id;
-        string targetKey = targetNode.Id;
+        string startKey = startNode.DocId;
+        string targetKey = targetNode.DocId;
 
         var queue = new Queue<string>();
         var visited = new HashSet<string>( StringComparer.OrdinalIgnoreCase );
-        var parentEdge = new Dictionary<string, GraphEdge>( StringComparer.OrdinalIgnoreCase );
+        var parentEdge = new Dictionary<string, SemanticWire>( StringComparer.OrdinalIgnoreCase );
 
         queue.Enqueue( startKey );
         visited.Add( startKey );
@@ -82,7 +82,7 @@ public static class GraphAlgorithms
             var currNode = graph.GetNode( current );
             if ( currNode == null ) continue;
 
-            var neighbors = new List<GraphEdge>();
+            var neighbors = new List<SemanticWire>();
             neighbors.AddRange( currNode.Relations.Outgoing );
 
             if ( undirected )
@@ -92,9 +92,9 @@ public static class GraphAlgorithms
 
             foreach ( var edge in neighbors )
             {
-                string neighborId = string.Equals( edge.SourceId, current, StringComparison.OrdinalIgnoreCase )
-                    ? edge.TargetId
-                    : edge.SourceId;
+                string neighborId = string.Equals( edge.AgentDocId, current, StringComparison.OrdinalIgnoreCase )
+                    ? edge.RecipientDocId
+                    : edge.AgentDocId;
 
                 if ( !visited.Contains( neighborId ) )
                 {
@@ -116,7 +116,7 @@ public static class GraphAlgorithms
             if ( parentEdge.TryGetValue( curr, out var edge ) )
             {
                 result.Steps.Add( edge );
-                curr = string.Equals( edge.SourceId, curr, StringComparison.OrdinalIgnoreCase ) ? edge.TargetId : edge.SourceId;
+                curr = string.Equals( edge.AgentDocId, curr, StringComparison.OrdinalIgnoreCase ) ? edge.RecipientDocId : edge.AgentDocId;
             }
             else
             {
@@ -133,7 +133,7 @@ public static class GraphAlgorithms
     /// </summary>
     public static List<GraphCycleResult> DetectCycles( CodeGraph graph )
     {
-        var states = new Dictionary<string, int>( StringComparer.OrdinalIgnoreCase ); // 0 = unvisited, 1 = visiting, 2 = visited
+        var states = new Dictionary<string, int>( StringComparer.OrdinalIgnoreCase );
         var pathStack = new List<string>();
         var uniqueCycles = new HashSet<string>( StringComparer.OrdinalIgnoreCase );
         var results = new List<GraphCycleResult>();
@@ -170,7 +170,7 @@ public static class GraphAlgorithms
         {
             foreach ( var edge in node.Relations.Outgoing )
             {
-                string target = edge.TargetId;
+                string target = edge.RecipientDocId;
 
                 if ( !states.ContainsKey( target ) )
                     continue;
@@ -214,6 +214,6 @@ public static class GraphAlgorithms
         var normalized = temp.Skip( minIndex ).Concat( temp.Take( minIndex ) ).ToList();
         normalized.Add( minNode );
 
-        return string.Join( " ──> ", normalized.Select( n => $"[{n}]" ) );
+        return string.Join( " ──► ", normalized.Select( n => $"[{n}]" ) );
     }
 }
