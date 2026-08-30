@@ -6,18 +6,18 @@ using Editor.Analysis.Models.Blocks;
 namespace Editor.Analysis.Models;
 
 /// <summary>
-/// High-performance fractal code graph indexing entities by DocId with instant semantic lookup.
+/// Blazing-fast O(1) fractal code graph with multi-alias indexing and polymorphic registry.
 /// </summary>
 public class CodeGraph
 {
-    private readonly Dictionary<string, NodeBlock> _nodes = new( StringComparer.OrdinalIgnoreCase );
+    private readonly Dictionary<string, NodeBlock> _nodesByDocId = new( StringComparer.OrdinalIgnoreCase );
+    private readonly Dictionary<string, NodeBlock> _lookupAliases = new( StringComparer.OrdinalIgnoreCase );
     private readonly List<SemanticWire> _edges = new();
     private readonly HashSet<string> _edgeLookup = new( StringComparer.OrdinalIgnoreCase );
 
-    // Maps Interface DocId -> List of implementing concrete Class DocIds (Polymorphic Index)
     public Dictionary<string, List<string>> InterfaceImplementations { get; } = new( StringComparer.OrdinalIgnoreCase );
 
-    public IReadOnlyDictionary<string, NodeBlock> Nodes => _nodes;
+    public IReadOnlyDictionary<string, NodeBlock> Nodes => _nodesByDocId;
     public IReadOnlyList<SemanticWire> Edges => _edges;
 
     public void AddNode( NodeBlock node )
@@ -25,13 +25,21 @@ public class CodeGraph
         if ( node == null || string.IsNullOrWhiteSpace( node.DocId ) )
             return;
 
-        _nodes[node.DocId] = node;
+        _nodesByDocId[node.DocId] = node;
 
-        // Also index by simple name if not exists for fast lookups
-        if ( !string.Equals( node.DocId, node.Name, StringComparison.OrdinalIgnoreCase ) && !_nodes.ContainsKey( node.Name ) )
+        // O(1) Fast Multi-Alias Indexing
+        _lookupAliases[node.DocId] = node;
+        _lookupAliases[node.Name] = node;
+
+        string fqn = $"{node.Body.Namespace}.{node.Name}".TrimStart( '.' );
+        if ( !string.IsNullOrWhiteSpace( fqn ) )
         {
-            _nodes[node.Name] = node;
+            _lookupAliases[fqn] = node;
+            _lookupAliases[$"T:{fqn}"] = node;
         }
+
+        string cleanDoc = node.DocId.Replace( "T:", "" );
+        _lookupAliases[cleanDoc] = node;
     }
 
     public void AddEdge( SemanticWire edge )
@@ -48,13 +56,14 @@ public class CodeGraph
 
         _edges.Add( edge );
 
-        if ( _nodes.TryGetValue( edge.AgentDocId, out var sourceNode ) )
+        // Direct O(1) instant dictionary lookup!
+        if ( _lookupAliases.TryGetValue( edge.AgentDocId, out var sourceNode ) )
             sourceNode.Relations.Outgoing.Add( edge );
 
-        if ( _nodes.TryGetValue( edge.RecipientDocId, out var targetNode ) )
+        if ( _lookupAliases.TryGetValue( edge.RecipientDocId, out var targetNode ) )
             targetNode.Relations.Incoming.Add( edge );
 
-        // If edge is Interface Implementation, index it for Polymorphic Dynamic Dispatch
+        // Index polymorphic implementations
         if ( edge.Action == RelationKind.Implements )
         {
             if ( !InterfaceImplementations.TryGetValue( edge.RecipientDocId, out var list ) )
@@ -66,19 +75,33 @@ public class CodeGraph
         }
     }
 
-    public NodeBlock? GetNode( string idOrName )
+    /// <summary>
+    /// Instant O(1) lookup by DocId, full namespace, short name, or prefix (e.g. "BBox", "Sandbox.BBox", "T:Sandbox.BBox").
+    /// </summary>
+    public NodeBlock? GetNode( string query )
     {
-        if ( string.IsNullOrWhiteSpace( idOrName ) ) return null;
+        if ( string.IsNullOrWhiteSpace( query ) ) return null;
 
-        if ( _nodes.TryGetValue( idOrName, out var exactNode ) )
-            return exactNode;
+        // Direct O(1) dictionary lookups
+        if ( _lookupAliases.TryGetValue( query, out var exact ) )
+            return exact;
+
+        if ( !query.StartsWith( "T:" ) && _lookupAliases.TryGetValue( $"T:{query}", out var withPrefix ) )
+            return withPrefix;
+
+        if ( _lookupAliases.TryGetValue( $"Sandbox.{query}", out var sandbox ) )
+            return sandbox;
+
+        if ( _lookupAliases.TryGetValue( $"T:Sandbox.{query}", out var sandboxDoc ) )
+            return sandboxDoc;
 
         return null;
     }
 
     public void Clear()
     {
-        _nodes.Clear();
+        _nodesByDocId.Clear();
+        _lookupAliases.Clear();
         _edges.Clear();
         _edgeLookup.Clear();
         InterfaceImplementations.Clear();

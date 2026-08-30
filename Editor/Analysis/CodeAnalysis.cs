@@ -4,7 +4,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Reflection;
 using Editor.Analysis.Internal.Extractors;
 using Editor.Analysis.Models;
 using Editor.Analysis.Models.Blocks;
@@ -15,14 +14,16 @@ using Sandbox;
 namespace Editor.Analysis;
 
 /// <summary>
-/// Master coordinator for True Semantic Code Analysis and Live Telemetry.
+/// Main public developer-facing API facade for querying fractal architecture graphs, semantic wires, and type diagnostics.
 /// </summary>
 public static class CodeAnalysis
 {
     private static CodeGraph? _activeGraph;
 
+    /// <summary> Event fired whenever the architecture graph is rebuilt. </summary>
     public static event Action? OnGraphRebuilt;
 
+    /// <summary> The active in-memory semantic code graph. </summary>
     public static CodeGraph Graph
     {
         get
@@ -35,20 +36,105 @@ public static class CodeAnalysis
         }
     }
 
+    // ==========================================
+    // 1. PUBLIC QUERY API
+    // ==========================================
+
+    /// <summary> Retrieves a node by DocId, FQN, or short name (e.g. "BBox", "PlayerController", "T:Sandbox.Component"). </summary>
     public static NodeBlock? GetNode( string idOrName )
     {
         return Graph.GetNode( idOrName );
     }
 
+    /// <summary> Retrieves a node by its strongly-typed generic System.Type. </summary>
+    public static NodeBlock? GetNode<T>()
+    {
+        return Graph.GetNode( typeof( T ).FullName ?? typeof( T ).Name );
+    }
+
+    /// <summary> Returns all nodes matching a specific architectural category (e.g. SceneComponent, UiPanel, GameResource). </summary>
+    public static IEnumerable<NodeBlock> GetNodes( SandboxTypeCategory category )
+    {
+        return Graph.Nodes.Values.Where( n => n.Body.Category == category );
+    }
+
+    /// <summary> Returns all nodes originating from a specific package or library (e.g. "towertinno", "sbox_ast_graph"). </summary>
+    public static IEnumerable<NodeBlock> GetNodesByPackage( string packageName )
+    {
+        return Graph.Nodes.Values.Where( n => string.Equals( n.Body.PackageName, packageName, StringComparison.OrdinalIgnoreCase ) );
+    }
+
+    /// <summary> Returns all concrete class DocIds that implement the specified interface. </summary>
+    public static IReadOnlyList<string> GetImplementations( string interfaceDocIdOrName )
+    {
+        var ifaceNode = GetNode( interfaceDocIdOrName );
+        string docId = ifaceNode != null ? ifaceNode.DocId : TypeResolver.MakeTypeDocId( interfaceDocIdOrName );
+
+        if ( Graph.InterfaceImplementations.TryGetValue( docId, out var list ) )
+            return list;
+
+        return Array.Empty<string>();
+    }
+
+    /// <summary> Returns all concrete class DocIds that implement the specified interface generic type. </summary>
+    public static IReadOnlyList<string> GetImplementations<T>() where T : class
+    {
+        return GetImplementations( typeof( T ).FullName ?? typeof( T ).Name );
+    }
+
+    /// <summary> Finds all incoming dependency wires referencing the specified type. </summary>
+    public static IEnumerable<SemanticWire> FindReferences( string typeIdOrName )
+    {
+        var node = GetNode( typeIdOrName );
+        if ( node == null ) return Enumerable.Empty<SemanticWire>();
+        return node.Relations.Incoming;
+    }
+
+    /// <summary> Finds all methods across user and engine code that accept the target type as a parameter. </summary>
+    public static IEnumerable<(NodeBlock Node, MethodItem Method)> FindMethodsAccepting( string targetTypeName )
+    {
+        string clean = TypeResolver.GetShortName( targetTypeName );
+        foreach ( var node in Graph.Nodes.Values )
+        {
+            foreach ( var method in node.Members.Methods )
+            {
+                if ( method.Parameters.Any( p => string.Equals( TypeResolver.GetShortName( p.TypeName ), clean, StringComparison.OrdinalIgnoreCase ) ) )
+                {
+                    yield return (node, method);
+                }
+            }
+        }
+    }
+
+    /// <summary> Finds all methods across user and engine code that return the specified type. </summary>
+    public static IEnumerable<(NodeBlock Node, MethodItem Method)> FindMethodsReturning( string targetTypeName )
+    {
+        string clean = TypeResolver.GetShortName( targetTypeName );
+        foreach ( var node in Graph.Nodes.Values )
+        {
+            foreach ( var method in node.Members.Methods )
+            {
+                if ( string.Equals( TypeResolver.GetShortName( method.ReturnTypeName ), clean, StringComparison.OrdinalIgnoreCase ) )
+                {
+                    yield return (node, method);
+                }
+            }
+        }
+    }
+
+    // ==========================================
+    // 2. REBUILD & PIPELINE COORDINATION
+    // ==========================================
+
     /// <summary>
-    /// Compiles all project source files with full Roslyn SemanticModel and extracts 100% facts.
+    /// Compiles all project source files with full Roslyn SemanticModel and rebuilds the fractal semantic graph.
     /// </summary>
     public static CodeGraph Rebuild()
     {
         var sw = Stopwatch.StartNew();
         var graph = new CodeGraph();
 
-        // 1. Ingest Engine Types from TypeLibrary
+        // 1. Ingest Engine Types from TypeLibrary & EditorTypeLibrary
         TypeLibraryExtractor.Extract( graph );
 
         // 2. Enumerate Project & Library Source Files Dynamically
@@ -56,7 +142,7 @@ public static class CodeAnalysis
         var csFiles = allSourceFiles.Where( f => f.FilePath.EndsWith( ".cs", StringComparison.OrdinalIgnoreCase ) ).ToList();
         var razorFiles = allSourceFiles.Where( f => f.FilePath.EndsWith( ".razor", StringComparison.OrdinalIgnoreCase ) ).ToList();
 
-        // 3. Build True Roslyn CSharpCompilation for User Code + Libraries
+        // 3. Build Roslyn CSharpCompilation for User Code + Libraries
         var syntaxTrees = new List<SyntaxTree>();
         foreach ( var item in csFiles )
         {
@@ -71,7 +157,6 @@ public static class CodeAnalysis
             }
         }
 
-        // Gather all loaded assembly metadata references (Sandbox.Game, Sandbox.Engine, System, etc.)
         var references = AppDomain.CurrentDomain.GetAssemblies()
             .Where( a => !a.IsDynamic && !string.IsNullOrEmpty( a.Location ) && File.Exists( a.Location ) )
             .Select( a => MetadataReference.CreateFromFile( a.Location ) )
@@ -85,7 +170,7 @@ public static class CodeAnalysis
             new CSharpCompilationOptions( OutputKind.DynamicallyLinkedLibrary )
         );
 
-        // 4. Run True Semantic Extraction over each syntax tree
+        // 4. Run Semantic Extraction over each syntax tree
         foreach ( var tree in compilation.SyntaxTrees )
         {
             var semanticModel = compilation.GetSemanticModel( tree );
@@ -161,7 +246,13 @@ public static class CodeAnalysis
         }
     }
 
-    public static void Diagnose( string idOrName )
+    // ==========================================
+    // 3. DIAGNOSTICS
+    // ==========================================
+
+    public static void Diagnose( string idOrName ) => DiagnoseFull( idOrName );
+
+    public static void DiagnoseFull( string idOrName )
     {
         var node = GetNode( idOrName );
         if ( node == null )
@@ -172,14 +263,19 @@ public static class CodeAnalysis
 
         var body = node.Body;
         Log.Info( $"==================================================" );
-        Log.Info( $"🔍 [5D SEMANTIC DIAGNOSTIC] {body.DocId} ({body.Origin} / {body.Category} / Realm: {body.Realm})" );
+        Log.Info( $"🔍 [FULL DIAGNOSTIC] {body.DocId} ({body.Origin} / {body.Category})" );
         Log.Info( $"   Title: '{body.Title}' | Icon: '{body.Icon}' | Group: '{body.Group}'" );
-        Log.Info( $"   Source: {body.FilePath}:{body.LineNumber}" );
+        Log.Info( $"   File: {body.FilePath}:{body.LineNumber}" );
         Log.Info( $"   Summary: {body.Summary}" );
 
         Log.Info( $"--------------------------------------------------" );
         Log.Info( $"📋 Attributes ({node.Attributes.Items.Count}):" );
         foreach ( var attr in node.Attributes.Items ) Log.Info( $"   • [{attr.Name}]" );
+
+        Log.Info( $"--------------------------------------------------" );
+        Log.Info( $"️ Fields ({node.Members.Fields.Count}):" );
+        foreach ( var f in node.Members.Fields.Take( 8 ) ) Log.Info( $"   • {f.TypeName} {f.Name}" );
+        if ( node.Members.Fields.Count > 8 ) Log.Info( $"   ... and {node.Members.Fields.Count - 8} more" );
 
         Log.Info( $"--------------------------------------------------" );
         Log.Info( $"📦 Properties ({node.Members.Properties.Count}):" );
@@ -195,94 +291,25 @@ public static class CodeAnalysis
         {
             Log.Info( $"--------------------------------------------------" );
             Log.Info( $"🎭 Concrete Implementations ({impls.Count}):" );
-            foreach ( var impl in impls ) Log.Info( $"   • ──[IS-A]──► {impl}" );
+            foreach ( var impl in impls.Take( 10 ) ) Log.Info( $"   • ──[IS-A]──► {impl}" );
         }
 
         Log.Info( $"--------------------------------------------------" );
-        Log.Info( $"🔗 Outgoing Semantic Wires ({node.Relations.OutgoingCount}):" );
-        foreach ( var e in node.Relations.Outgoing.Take( 12 ) )
+        Log.Info( $"🔗 Outgoing Dependencies ({node.Relations.OutgoingCount}):" );
+        foreach ( var e in node.Relations.Outgoing.Take( 15 ) )
         {
             string polyMarker = e.IsPolymorphicFanout ? " [Polymorphic Ghost]" : "";
             Log.Info( $"   ─[{e.Action}]─► {e.RecipientDocId} ({e.Instrument}){polyMarker}" );
         }
-        if ( node.Relations.OutgoingCount > 12 ) Log.Info( $"   ... and {node.Relations.OutgoingCount - 12} more" );
+        if ( node.Relations.OutgoingCount > 15 ) Log.Info( $"   ... and {node.Relations.OutgoingCount - 15} more" );
 
         Log.Info( $"--------------------------------------------------" );
-        Log.Info( $"📥 Incoming Semantic Wires ({node.Relations.IncomingCount}):" );
-        foreach ( var e in node.Relations.Incoming.Take( 12 ) )
+        Log.Info( $"📥 Incoming References ({node.Relations.IncomingCount}):" );
+        foreach ( var e in node.Relations.Incoming.Take( 15 ) )
         {
             Log.Info( $"   ◄─[{e.Action}]─ {e.AgentDocId} ({e.Instrument})" );
         }
-        if ( node.Relations.IncomingCount > 12 ) Log.Info( $"   ... and {node.Relations.IncomingCount - 12} more" );
-        Log.Info( $"==================================================" );
-    }
-
-    /// <summary>
-    /// Performs an exhaustive diagnostic inspection on a single node, logging 100% of its members, attributes, and relationships without truncation.
-    /// </summary>
-    public static void DiagnoseFull( string idOrName )
-    {
-        var node = GetNode( idOrName );
-        if ( node == null )
-        {
-            Log.Warning( $"[CodeAnalysis] Node '{idOrName}' not found in graph!" );
-            return;
-        }
-
-        Log.Info( $"==================================================" );
-        Log.Info( $"🔍 [FULL DIAGNOSTIC] {node.Header.Id} ({node.Header.Origin} / {node.Header.Category})" );
-        Log.Info( $"   Title: '{node.Header.Title}' | Icon: '{node.Header.Icon}' | Group: '{node.Header.Group}'" );
-        Log.Info( $"   File: {node.Header.FilePath}:{node.Header.LineNumber}" );
-        Log.Info( $"   Summary: {node.Header.Summary}" );
-
-        // Attributes
-        Log.Info( $"--------------------------------------------------" );
-        Log.Info( $"📋 Attributes ({node.Attributes.Items.Count}):" );
-        foreach ( var attr in node.Attributes.Items )
-        {
-            Log.Info( $"   • [{attr.Name}]" );
-        }
-
-        // Fields (if tracked in Members)
-        Log.Info( $"--------------------------------------------------" );
-        Log.Info( $"🏷️ Fields ({node.Members.Fields.Count}):" );
-        foreach ( var f in node.Members.Fields )
-        {
-            Log.Info( $"   • {f.TypeName} {f.Name}" );
-        }
-
-        // Properties
-        Log.Info( $"--------------------------------------------------" );
-        Log.Info( $"📦 Properties ({node.Members.Properties.Count}):" );
-        foreach ( var p in node.Members.Properties )
-        {
-            Log.Info( $"   • {p.TypeName} {p.Name} {(p.HasPropertyAttribute ? "[Property]" : "")}" );
-        }
-
-        // Methods
-        Log.Info( $"--------------------------------------------------" );
-        Log.Info( $"⚡ Methods ({node.Members.Methods.Count}):" );
-        foreach ( var m in node.Members.Methods )
-        {
-            Log.Info( $"   • {m.FullSignature}" );
-        }
-
-        // Outgoing Dependencies
-        Log.Info( $"--------------------------------------------------" );
-        Log.Info( $"🔗 Outgoing Dependencies ({node.Relations.OutgoingCount}):" );
-        foreach ( var e in node.Relations.Outgoing )
-        {
-            Log.Info( $"   ─[{e.Kind}]─> {e.TargetId} ({e.Details})" );
-        }
-
-        // Incoming References
-        Log.Info( $"--------------------------------------------------" );
-        Log.Info( $"📥 Incoming References ({node.Relations.IncomingCount}):" );
-        foreach ( var e in node.Relations.Incoming )
-        {
-            Log.Info( $"   <─[{e.Kind}]─ {e.SourceId} ({e.Details})" );
-        }
-
+        if ( node.Relations.IncomingCount > 15 ) Log.Info( $"   ... and {node.Relations.IncomingCount - 15} more" );
         Log.Info( $"==================================================" );
     }
 
@@ -290,6 +317,5 @@ public static class CodeAnalysis
     public static void OnHotload()
     {
         Rebuild();
-        DiagnoseFull( "CodeAnalysis" );
     }
 }
