@@ -1,6 +1,7 @@
 #nullable enable
 using System;
 using System.Collections.Generic;
+using ArchitectureVisualizer.UI.CanvasEngine.API;
 using ArchitectureVisualizer.UI.CanvasEngine.Models;
 using ArchitectureVisualizer.UI;
 using Editor.Analysis.Models;
@@ -10,30 +11,38 @@ using Sandbox;
 
 namespace ArchitectureVisualizer.UI.Bridge;
 
+/// <summary>
+/// Filtering options for building the visual canvas graph.
+/// </summary>
 public sealed class GraphFilterOptions
 {
     public string? SearchQuery { get; set; }
     public bool UserCodeOnly { get; set; } = false;
     public bool IncludeSystemPrimitives { get; set; } = false;
+    public bool IncludeCompilerGenerated { get; set; } = false;
     public bool ComponentsOnly { get; set; } = false;
     public bool RazorOnly { get; set; } = false;
     public int MaxNodesToLoad { get; set; } = 30000;
 }
 
+/// <summary>
+/// Bridges CodeGraph AST models to hardware-accelerated CanvasEngine via public ICanvasGraph contract.
+/// </summary>
 public static class GraphCanvasAdapter
 {
     public static void PopulateCanvas( CanvasWidget canvas, CodeGraph graph, GraphFilterOptions? options = null )
     {
         options ??= new GraphFilterOptions();
-        canvas.Clear();
 
         var matchingNodes = new List<NodeBlock>();
-        var idToIndexMap = new Dictionary<string, int>( StringComparer.OrdinalIgnoreCase );
 
         // 1. Filter Nodes
         foreach ( var node in graph.Nodes.Values )
         {
             var body = node.Body;
+
+            if ( !options.IncludeCompilerGenerated && IsCompilerGenerated( body.Name, body.DocId ) )
+                continue;
 
             if ( !options.IncludeSystemPrimitives && body.Origin == NodeOrigin.SystemPrimitive )
                 continue;
@@ -51,7 +60,8 @@ public static class GraphCanvasAdapter
             {
                 bool match = body.Name.Contains( options.SearchQuery, StringComparison.OrdinalIgnoreCase ) ||
                              body.Namespace.Contains( options.SearchQuery, StringComparison.OrdinalIgnoreCase ) ||
-                             body.Title.Contains( options.SearchQuery, StringComparison.OrdinalIgnoreCase );
+                             body.Title.Contains( options.SearchQuery, StringComparison.OrdinalIgnoreCase ) ||
+                             body.DocId.Contains( options.SearchQuery, StringComparison.OrdinalIgnoreCase );
                 if ( !match ) continue;
             }
 
@@ -59,89 +69,151 @@ public static class GraphCanvasAdapter
             if ( matchingNodes.Count >= options.MaxNodesToLoad ) break;
         }
 
+        // 2. High-Performance Ingestion using CanvasEngine BatchUpdate
+        canvas.Clear();
+
         if ( matchingNodes.Count == 0 )
         {
             canvas.Update();
             return;
         }
 
-        // 2. Fermat's Spiral Spatial Layout
         const float goldenAngle = 137.507764f * (MathF.PI / 180f);
-        float spacing = 35f;
+        float spacing = matchingNodes.Count > 1000 ? 55f : 40f;
+        var validIds = new HashSet<string>( StringComparer.OrdinalIgnoreCase );
 
-        for ( int i = 0; i < matchingNodes.Count; i++ )
+        canvas.BatchUpdate( g =>
         {
-            var node = matchingNodes[i];
-            var body = node.Body;
-            int degree = Math.Max( 1, node.Relations.OutgoingCount + node.Relations.IncomingCount );
-
-            float phi = i * goldenAngle;
-            float r = spacing * MathF.Sqrt( i + 1 );
-            Vector2 spiralPos = new( r * MathF.Cos( phi ), r * MathF.Sin( phi ) );
-
-            ushort zLevel = (ushort)Math.Clamp( (int)MathF.Log2( degree + 1 ), 0, 16 );
-            float radius = 6.0f + MathF.Sqrt( degree ) * 1.0f;
-
-            NodeSpatialData spatial = new()
+            // Add all nodes
+            for ( int i = 0; i < matchingNodes.Count; i++ )
             {
-                Position = spiralPos,
-                Velocity = Vector2.Zero,
-                Radius = radius,
-                ZLevel = zLevel,
-                Shape = GetCategoryShape( body.Category ),
-                Flags = NodeFlags.None
-            };
+                var node = matchingNodes[i];
+                var body = node.Body;
+                int degree = Math.Max( 1, node.Relations.OutgoingCount + node.Relations.IncomingCount );
 
-            string icon = !string.IsNullOrWhiteSpace( body.Icon ) ? body.Icon : GetCategoryIcon( body.Category );
+                float phi = i * goldenAngle;
+                float r = spacing * MathF.Sqrt( i + 1 );
+                Vector2 spiralPos = new( r * MathF.Cos( phi ), r * MathF.Sin( phi ) );
 
-            NodePayload payload = new()
-            {
-                Id = body.DocId,
-                Title = body.Title,
-                Subtitle = body.Namespace,
-                Summary = body.Summary,
-                FilePath = body.FilePath,
-                LineNumber = body.LineNumber > 0 ? body.LineNumber : 1,
-                AccentColor = GetCategoryColor( body.Category ),
-                Icon = icon,
-                TotalDegree = degree,
-                PhysicsMass = 1.0f + (degree * 0.25f),
-                UserData = node
-            };
+                float radius = Math.Clamp( 7.0f + MathF.Sqrt( degree ) * 1.2f, 7.0f, 45.0f );
+                string icon = !string.IsNullOrWhiteSpace( body.Icon ) ? body.Icon : GetCategoryIcon( body.Category );
 
-            int idx = canvas.Registry.Allocate( in spatial, payload );
-            idToIndexMap[body.DocId] = idx;
-            idToIndexMap[body.Name] = idx; // Lookup by simple name fallback
-        }
+                g.AddNode( body.DocId, body.Title, body.Namespace )
+                 .WithShape( GetCategoryShape( body.Category ) )
+                 .WithColor( GetCategoryColor( body.Category ) )
+                 .WithSize( radius )
+                 .WithPosition( spiralPos )
+                 .WithData( node );
 
-        // 3. Allocate Semantic Wires with Visual Styles
-        foreach ( var node in matchingNodes )
-        {
-            if ( !idToIndexMap.TryGetValue( node.DocId, out int srcIdx ) ) continue;
-
-            foreach ( var edge in node.Relations.Outgoing )
-            {
-                if ( !idToIndexMap.TryGetValue( edge.RecipientDocId, out int dstIdx ) ) continue;
-
-                var (edgeStyle, flowSpeed) = GetRelationStyle( edge.Action, edge.IsPolymorphicFanout );
-
-                var cEdge = new CanvasEdge( srcIdx, dstIdx )
+                int idx = canvas.Registry.Count - 1;
+                if ( idx >= 0 && idx < canvas.Registry.Count )
                 {
-                    Label = GetRelationLabel( edge.Action, edge.IsPolymorphicFanout ),
-                    CustomColor = GetRelationColor( edge.Action, edge.IsPolymorphicFanout ),
-                    Style = edgeStyle,
-                    FlowSpeed = flowSpeed,
-                    DesiredSpringLength = edge.IsPolymorphicFanout ? 280f : 220f,
-                    UserData = edge
-                };
+                    var payload = canvas.Registry.GetPayload( idx );
+                    payload.Summary = body.Summary;
+                    payload.FilePath = body.FilePath;
+                    payload.LineNumber = body.LineNumber > 0 ? body.LineNumber : 1;
+                    payload.Icon = icon;
+                    payload.TotalDegree = degree;
+                    payload.PhysicsMass = 1.0f + MathF.Min( degree * 0.2f, 10.0f );
+                }
 
-                canvas.Edges.Add( cEdge );
+                validIds.Add( body.DocId );
             }
+
+            // Connect semantic wires
+            foreach ( var node in matchingNodes )
+            {
+                foreach ( var edge in node.Relations.Outgoing )
+                {
+                    if ( !validIds.Contains( edge.RecipientDocId ) ) continue;
+
+                    var (edgeStyle, flowSpeed) = GetRelationStyle( edge.Action, edge.IsPolymorphicFanout );
+
+                    g.Connect( node.DocId, edge.RecipientDocId )
+                     .WithStyle( edgeStyle )
+                     .WithSpeed( flowSpeed )
+                     .WithColor( GetRelationColor( edge.Action, edge.IsPolymorphicFanout ) )
+                     .WithLabel( GetRelationLabel( edge.Action, edge.IsPolymorphicFanout ) );
+                }
+            }
+        } );
+
+        canvas.RebuildAdjacency();
+        canvas.FitToScreen();
+        canvas.Update();
+    }
+
+    /// <summary>
+    /// Zero-allocation Roslyn synthetic artifact filter based on ECMA-335 grammar (from technical research).
+    /// </summary>
+    public static bool IsCompilerGenerated( string? name, string? docId )
+    {
+        if ( string.IsNullOrWhiteSpace( name ) ) return true;
+
+        var span = name.AsSpan();
+
+        // Strip namespace / nested class separators (e.g. MyClass+<>c -> <>c)
+        int lastSep = span.LastIndexOfAny( '.', '+', '/' );
+        if ( lastSep >= 0 && lastSep < span.Length - 1 )
+            span = span.Slice( lastSep + 1 );
+
+        // 1. Exact match compiler infrastructure
+        if ( span.SequenceEqual( "<Module>".AsSpan() ) ||
+             span.SequenceEqual( "<PrivateImplementationDetails>".AsSpan() ) ||
+             span.SequenceEqual( "<Program>$".AsSpan() ) )
+        {
+            return true;
         }
 
-        canvas.SyncGpuBuffers();
-        canvas.Physics.Reheat( 1.0f );
-        canvas.Update();
+        // 2. Fixed buffer raw structs
+        if ( span.StartsWith( "__StaticArrayInitTypeSize=".AsSpan(), StringComparison.Ordinal ) ||
+             span.StartsWith( "StaticArrayInitTypeSize".AsSpan(), StringComparison.Ordinal ) ||
+             span.StartsWith( "__StaticArrayInit".AsSpan(), StringComparison.Ordinal ) )
+        {
+            return true;
+        }
+
+        // 3. Roslyn bracketed naming convention (<Identifier>...)
+        if ( span[0] == '<' )
+        {
+            // Anonymous types, lambda singletons (<>c, <>f__AnonymousType)
+            if ( span.Length > 1 && span[1] == '>' )
+                return true;
+
+            int closingAngle = span.IndexOf( '>' );
+            if ( closingAngle > 0 && closingAngle < span.Length - 1 )
+            {
+                var suffix = span.Slice( closingAngle + 1 );
+
+                if ( suffix.StartsWith( "d__".AsSpan(), StringComparison.Ordinal ) ||
+                     suffix.StartsWith( "k__BackingField".AsSpan(), StringComparison.Ordinal ) ||
+                     suffix.StartsWith( "g__".AsSpan(), StringComparison.Ordinal ) ||
+                     suffix.StartsWith( "b__".AsSpan(), StringComparison.Ordinal ) ||
+                     suffix.StartsWith( "e__FixedBuffer".AsSpan(), StringComparison.Ordinal ) ||
+                     suffix.StartsWith( "P".AsSpan(), StringComparison.Ordinal ) ||
+                     suffix.StartsWith( "i__Field".AsSpan(), StringComparison.Ordinal ) )
+                {
+                    return true;
+                }
+            }
+
+            return true;
+        }
+
+        // 4. Cached lambda delegates and DLR call sites
+        if ( span.StartsWith( "<>9".AsSpan(), StringComparison.Ordinal ) ||
+             span.StartsWith( "<>p__".AsSpan(), StringComparison.Ordinal ) ||
+             span.StartsWith( "<>o__".AsSpan(), StringComparison.Ordinal ) ||
+             span.Contains( "DisplayClass".AsSpan(), StringComparison.Ordinal ) )
+        {
+            return true;
+        }
+
+        // 5. DocId verification
+        if ( !string.IsNullOrEmpty( docId ) && (docId.Contains( "<>c" ) || docId.Contains( "<PrivateImplementationDetails>" )) )
+            return true;
+
+        return false;
     }
 
     public static NodeShape GetCategoryShape( SandboxTypeCategory category ) => category switch
@@ -155,13 +227,13 @@ public static class GraphCanvasAdapter
 
     public static (EdgeStyle Style, float Speed) GetRelationStyle( RelationKind kind, bool isPolyFanout )
     {
-        if ( isPolyFanout ) return (EdgeStyle.Dashed, 0.8f); // Ghost dashed line for polymorphic fan-outs!
+        if ( isPolyFanout ) return (EdgeStyle.Dashed, 0.8f);
 
         return kind switch
         {
             RelationKind.Inherits or RelationKind.Implements => (EdgeStyle.DirectionalArrows, 1.2f),
-            RelationKind.RpcDispatch => (EdgeStyle.LaserPulse, 3.0f),       // Fast laser pulse for Network RPC!
-            RelationKind.AsyncAwait => (EdgeStyle.Dashed, 0.5f),            // Slow dashed flow for Async/Await
+            RelationKind.RpcDispatch => (EdgeStyle.LaserPulse, 3.0f),
+            RelationKind.AsyncAwait => (EdgeStyle.Dashed, 0.5f),
             RelationKind.EventSubscription => (EdgeStyle.LaserPulse, 1.8f),
             RelationKind.Instantiates => (EdgeStyle.Dashed, 1.0f),
             RelationKind.RazorMarkupTag => (EdgeStyle.DoubleLine, 0.0f),
@@ -211,13 +283,13 @@ public static class GraphCanvasAdapter
 
     public static Color GetRelationColor( RelationKind kind, bool isPolyFanout )
     {
-        if ( isPolyFanout ) return new Color( 0.61f, 0.35f, 0.71f, 0.5f ); // Purple ghost wire
+        if ( isPolyFanout ) return new Color( 0.61f, 0.35f, 0.71f, 0.5f );
 
         return kind switch
         {
             RelationKind.Inherits or RelationKind.Implements => new Color( 0.91f, 0.30f, 0.24f, 0.8f ),
-            RelationKind.RpcDispatch => new Color( 0.95f, 0.20f, 0.90f, 0.9f ),    // Neon Magenta for RPC
-            RelationKind.AsyncAwait => new Color( 0.20f, 0.80f, 0.95f, 0.75f ),    // Cyan for Async/Await
+            RelationKind.RpcDispatch => new Color( 0.95f, 0.20f, 0.90f, 0.9f ),
+            RelationKind.AsyncAwait => new Color( 0.20f, 0.80f, 0.95f, 0.75f ),
             RelationKind.RazorMarkupTag => new Color( 1.0f, 0.62f, 0.26f, 0.8f ),
             RelationKind.EventSubscription => new Color( 0.68f, 0.38f, 0.95f, 0.8f ),
             RelationKind.Instantiates => new Color( 0.18f, 0.80f, 0.44f, 0.7f ),

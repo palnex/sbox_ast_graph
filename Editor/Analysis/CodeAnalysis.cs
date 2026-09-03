@@ -170,11 +170,14 @@ public static class CodeAnalysis
             new CSharpCompilationOptions( OutputKind.DynamicallyLinkedLibrary )
         );
 
-        // 4. Run Semantic Extraction over each syntax tree
+        // 4. Run Semantic Extraction over each syntax tree with true package name
+        var fileToPackageMap = allSourceFiles.ToDictionary( f => f.FilePath, f => f.PackageName, StringComparer.OrdinalIgnoreCase );
+
         foreach ( var tree in compilation.SyntaxTrees )
         {
             var semanticModel = compilation.GetSemanticModel( tree );
-            var walker = new RoslynSemanticExtractor( graph, semanticModel, tree.FilePath );
+            fileToPackageMap.TryGetValue( tree.FilePath, out string? pkg );
+            var walker = new RoslynSemanticExtractor( graph, semanticModel, tree.FilePath, pkg ?? "" );
             walker.Visit( tree.GetRoot() );
         }
 

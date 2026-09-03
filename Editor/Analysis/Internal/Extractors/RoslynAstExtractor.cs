@@ -1,6 +1,7 @@
 #nullable enable
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using Editor.Analysis.Models;
 using Editor.Analysis.Models.Blocks;
@@ -18,20 +19,22 @@ public class RoslynSemanticExtractor : CSharpSyntaxWalker
     private readonly CodeGraph _graph;
     private readonly SemanticModel _semanticModel;
     private readonly string _filePath;
+    private readonly string _packageName;
 
     private readonly Stack<INamedTypeSymbol> _typeSymbolStack = new();
 
-    public RoslynSemanticExtractor( CodeGraph graph, SemanticModel semanticModel, string filePath )
+    public RoslynSemanticExtractor( CodeGraph graph, SemanticModel semanticModel, string filePath, string packageName = "" )
     {
         _graph = graph;
         _semanticModel = semanticModel;
         _filePath = filePath;
+        _packageName = packageName;
     }
 
     private INamedTypeSymbol? CurrentTypeSymbol => _typeSymbolStack.Count > 0 ? _typeSymbolStack.Peek() : null;
 
     // ==========================================
-    // 1. TYPE DECLARATIONS (Classes, Structs, Interfaces)
+    // 1. TYPE DECLARATIONS
     // ==========================================
 
     public override void VisitClassDeclaration( ClassDeclarationSyntax node )
@@ -80,7 +83,7 @@ public class RoslynSemanticExtractor : CSharpSyntaxWalker
     }
 
     // ==========================================
-    // 2. FIELDS & PROPERTIES (True Symbol References)
+    // 2. FIELDS & PROPERTIES
     // ==========================================
 
     public override void VisitFieldDeclaration( FieldDeclarationSyntax node )
@@ -111,24 +114,21 @@ public class RoslynSemanticExtractor : CSharpSyntaxWalker
     }
 
     // ==========================================
-    // 3. METHODS, PARAMETERS, & RPCs
+    // 3. METHODS, PARAMETERS, & RPCS
     // ==========================================
 
     public override void VisitMethodDeclaration( MethodDeclarationSyntax node )
     {
         if ( CurrentTypeSymbol != null && _semanticModel.GetDeclaredSymbol( node ) is IMethodSymbol methodSymbol )
         {
-            // Determine RelationKind based on true Roslyn attributes and async keyword
             bool isRpc = methodSymbol.GetAttributes().Any( a => a.AttributeClass?.Name.Contains( "Rpc" ) == true );
             var relationKind = isRpc ? RelationKind.RpcDispatch : (methodSymbol.IsAsync ? RelationKind.AsyncAwait : RelationKind.MethodCall);
 
-            // Return Type Dependencies
             if ( methodSymbol.ReturnType.SpecialType != SpecialType.System_Void )
             {
                 AddSymbolDependencies( CurrentTypeSymbol, methodSymbol.ReturnType, relationKind, $"Returns from '{methodSymbol.Name}()'", node.ReturnType.GetLocation() );
             }
 
-            // Parameter Types Dependencies
             foreach ( var parameter in methodSymbol.Parameters )
             {
                 AddSymbolDependencies( CurrentTypeSymbol, parameter.Type, RelationKind.MethodCall, $"Param '{parameter.Name}' in '{methodSymbol.Name}()'", node.GetLocation() );
@@ -139,7 +139,7 @@ public class RoslynSemanticExtractor : CSharpSyntaxWalker
     }
 
     // ==========================================
-    // 4. OBJECT CREATIONS (new MyClass())
+    // 4. OBJECT CREATIONS
     // ==========================================
 
     public override void VisitObjectCreationExpression( ObjectCreationExpressionSyntax node )
@@ -184,7 +184,6 @@ public class RoslynSemanticExtractor : CSharpSyntaxWalker
             {
                 var targetType = methodSymbol.ContainingType;
 
-                // Detect Components.Get<T>() / GetComponent<T>()
                 if ( methodSymbol.IsGenericMethod &&
                      methodSymbol.Name is "Get" or "GetAll" or "GetComponent" or "GetComponentInChildren" or "GetOrCreate" &&
                      (targetType.Name.Contains( "Component" ) || targetType.Name.Contains( "GameObject" ) || targetType.Name.Contains( "Scene" )) )
@@ -194,7 +193,6 @@ public class RoslynSemanticExtractor : CSharpSyntaxWalker
                         AddSymbolDependencies( CurrentTypeSymbol, typeArg, RelationKind.ComponentFetch, $"Components.Get<{typeArg.Name}>()", node.GetLocation() );
                     }
                 }
-                // Direct Method Call on Concrete Type (resolves GameManager.Instance automatically!)
                 else if ( targetType != null )
                 {
                     AddSymbolDependencies( CurrentTypeSymbol, targetType, RelationKind.MethodCall, $"Method '{methodSymbol.Name}()'", node.GetLocation() );
@@ -206,7 +204,7 @@ public class RoslynSemanticExtractor : CSharpSyntaxWalker
     }
 
     // ==========================================
-    // 6. TRUE EVENT SUBSCRIPTIONS (+= / -=)
+    // 6. EVENT SUBSCRIPTIONS
     // ==========================================
 
     public override void VisitAssignmentExpression( AssignmentExpressionSyntax node )
@@ -215,7 +213,6 @@ public class RoslynSemanticExtractor : CSharpSyntaxWalker
         {
             var leftSymbol = _semanticModel.GetSymbolInfo( node.Left ).Symbol;
 
-            // FACT: Is the left symbol truly an Event or a Delegate/Action property?
             if ( leftSymbol is IEventSymbol eventSymbol )
             {
                 if ( eventSymbol.ContainingType != null )
@@ -232,7 +229,6 @@ public class RoslynSemanticExtractor : CSharpSyntaxWalker
                     AddSymbolDependencies( CurrentTypeSymbol, propSymbol.ContainingType, RelationKind.EventSubscription, $"Action '{propSymbol.Name}' {sign}", node.GetLocation() );
                 }
             }
-            // If it's a normal numeric property (e.g. stat.Level += count), it is ignored as standard arithmetic!
         }
 
         base.VisitAssignmentExpression( node );
@@ -266,7 +262,16 @@ public class RoslynSemanticExtractor : CSharpSyntaxWalker
 
         int line = location.GetLineSpan().StartLinePosition.Line + 1;
 
-        if ( existing == null )
+        if ( existing != null )
+        {
+            // Update existing with TRUE source code facts
+            existing.Body.Origin = NodeOrigin.UserProject;
+            existing.Body.FilePath = _filePath;
+            existing.Body.LineNumber = line;
+            if ( !string.IsNullOrEmpty( _packageName ) ) existing.Body.PackageName = _packageName;
+            if ( existing.Body.Category == SandboxTypeCategory.Class ) existing.Body.Category = category;
+        }
+        else
         {
             var node = new NodeBlock
             {
@@ -279,6 +284,7 @@ public class RoslynSemanticExtractor : CSharpSyntaxWalker
                     Title = symbol.Name,
                     Category = category,
                     Origin = NodeOrigin.UserProject,
+                    PackageName = _packageName,
                     FilePath = _filePath,
                     LineNumber = line,
                     IsAbstract = symbol.IsAbstract,
@@ -290,7 +296,6 @@ public class RoslynSemanticExtractor : CSharpSyntaxWalker
             _graph.AddNode( node );
         }
 
-        // Base Class & Interface Declarations
         if ( symbol.BaseType != null && symbol.BaseType.SpecialType == SpecialType.None )
         {
             AddSymbolDependencies( symbol, symbol.BaseType, RelationKind.Inherits, "Base Class", location );
@@ -322,13 +327,12 @@ public class RoslynSemanticExtractor : CSharpSyntaxWalker
     {
         if ( targetSymbol == null ) return;
 
-        // Recursively unwrap Arrays (T[]) and Generics (List<T>, Dictionary<K, V>)
         foreach ( var unwrapped in UnwrapTypeSymbol( targetSymbol ) )
         {
             if ( unwrapped.SpecialType != SpecialType.None &&
                  unwrapped.SpecialType != SpecialType.System_Object )
             {
-                continue; // Skip system primitives (int, string, bool, float, etc.)
+                continue;
             }
 
             if ( SymbolEqualityComparer.Default.Equals( sourceSymbol, unwrapped ) )

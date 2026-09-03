@@ -3,11 +3,10 @@ using System;
 using Editor;
 using Sandbox;
 
-
 namespace ArchitectureVisualizer.UI.Floating;
 
 /// <summary>
-/// Minimalistic floating top HUD with search, scope pills, and node counters.
+/// Floating top HUD with search, category tags, and status info.
 /// </summary>
 public sealed class CanvasTopHud : Widget
 {
@@ -33,7 +32,7 @@ public sealed class CanvasTopHud : Widget
         Cursor = CursorShape.Arrow;
 
         SetStyles( @"
-            background-color: rgba( 18, 20, 26, 0.92 );
+            background-color: rgba( 18, 20, 26, 0.94 );
             border: 1px solid rgba( 255, 255, 255, 0.12 );
             border-radius: 8px;
             padding: 4px 8px;
@@ -46,22 +45,38 @@ public sealed class CanvasTopHud : Widget
 
         // 1. Search Box
         _searchBox = Layout.Add( new LineEdit( this ) );
-        _searchBox.PlaceholderText = "Search architecture...";
+        _searchBox.PlaceholderText = "Search graph...";
         _searchBox.ClearButtonEnabled = true;
-        _searchBox.FixedWidth = 180;
+        _searchBox.FixedWidth = 190;
         _searchBox.TextEdited += text => OnSearchChanged?.Invoke( text );
 
         Layout.AddSpacingCell( 4 );
 
-        // 2. Scope & Category Pills
-        _btnUser = CreatePill( "User Code", false, () =>
+        // 2. Filter Tag Buttons
+        _btnUser = CreatePill( "User Code", FilterUserOnly, () =>
         {
             FilterUserOnly = !FilterUserOnly;
             UpdatePillStates();
             OnFilterChanged?.Invoke();
         } );
 
-        _btnSystem = CreatePill( "System (.NET)", false, () =>
+        _btnComponents = CreatePill( "Components", FilterComponentsOnly, () =>
+        {
+            FilterComponentsOnly = !FilterComponentsOnly;
+            if ( FilterComponentsOnly ) FilterRazorOnly = false;
+            UpdatePillStates();
+            OnFilterChanged?.Invoke();
+        } );
+
+        _btnRazor = CreatePill( "Razor UI", FilterRazorOnly, () =>
+        {
+            FilterRazorOnly = !FilterRazorOnly;
+            if ( FilterRazorOnly ) FilterComponentsOnly = false;
+            UpdatePillStates();
+            OnFilterChanged?.Invoke();
+        } );
+
+        _btnSystem = CreatePill( "System Types", IncludeSystemPrimitives, () =>
         {
             IncludeSystemPrimitives = !IncludeSystemPrimitives;
             UpdatePillStates();
@@ -70,25 +85,9 @@ public sealed class CanvasTopHud : Widget
 
         Layout.AddSpacingCell( 4 );
 
-        _btnComponents = CreatePill( "Components", false, () =>
-        {
-            FilterComponentsOnly = !FilterComponentsOnly;
-            if ( FilterComponentsOnly ) FilterRazorOnly = false;
-            UpdatePillStates();
-            OnFilterChanged?.Invoke();
-        } );
-
-        _btnRazor = CreatePill( "Razor UI", false, () =>
-        {
-            FilterRazorOnly = !FilterRazorOnly;
-            if ( FilterRazorOnly ) FilterComponentsOnly = false;
-            UpdatePillStates();
-            OnFilterChanged?.Invoke();
-        } );
-
-        // 3. Rebuild Button
-        var rebuildBtn = Layout.Add( new Button( "refresh", this ) );
-        rebuildBtn.ToolTip = "Rebuild Graph";
+        // 3. Rebuild Button (Icon only)
+        var rebuildBtn = Layout.Add( new Button( "", "refresh", this ) );
+        rebuildBtn.ToolTip = "Rebuild AST Graph";
         rebuildBtn.Clicked = () => OnRebuildRequested?.Invoke();
         rebuildBtn.FixedWidth = 28;
 
@@ -121,7 +120,7 @@ public sealed class CanvasTopHud : Widget
         if ( active )
         {
             btn.SetStyles( @"
-                background-color: rgba( 79, 172, 254, 0.30 );
+                background-color: rgba( 79, 172, 254, 0.35 );
                 border: 1px solid #4facfe;
                 border-radius: 12px;
                 color: #ffffff;

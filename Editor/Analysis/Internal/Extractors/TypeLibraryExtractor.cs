@@ -280,16 +280,30 @@ public static class TypeLibraryExtractor
     {
         string name = assembly.GetName().Name ?? string.Empty;
 
-        if ( name.StartsWith( "Sandbox." ) || name.StartsWith( "Facepunch." ) )
-            return NodeOrigin.EngineRuntime;
-
-        if ( name.StartsWith( "Editor." ) )
-            return NodeOrigin.EngineEditor;
-
-        if ( name.StartsWith( "System." ) || name.StartsWith( "Microsoft." ) || name.Equals( "mscorlib", StringComparison.OrdinalIgnoreCase ) )
+        // System & Microsoft primitives
+        if ( name.StartsWith( "System" ) || name.StartsWith( "Microsoft" ) || name.Equals( "mscorlib", StringComparison.OrdinalIgnoreCase ) )
             return NodeOrigin.SystemPrimitive;
 
-        return NodeOrigin.UserProject;
+        // Editor Tools & Engine
+        if ( name.StartsWith( "Editor" ) || name.Contains( ".Editor" ) || name.Equals( "Tools", StringComparison.OrdinalIgnoreCase ) )
+            return NodeOrigin.EngineEditor;
+
+        // s&box Core Runtime & Base Assemblies
+        if ( name.StartsWith( "Sandbox" ) || name.StartsWith( "Facepunch" ) || name.Equals( "Base", StringComparison.OrdinalIgnoreCase ) || name.Equals( "Core", StringComparison.OrdinalIgnoreCase ) )
+            return NodeOrigin.EngineRuntime;
+
+        // Check if assembly matches current project ident
+        if ( Project.Current != null && !string.IsNullOrEmpty( Project.Current.Config?.Ident ) )
+        {
+            if ( name.Contains( Project.Current.Config.Ident, StringComparison.OrdinalIgnoreCase ) )
+                return NodeOrigin.UserProject;
+        }
+
+        // Check if it is a local dynamic assembly
+        if ( assembly.IsDynamic || name.StartsWith( "local." ) )
+            return NodeOrigin.UserProject;
+
+        return NodeOrigin.EngineRuntime;
     }
 
     public static SandboxTypeCategory DetermineCategory( Type type )

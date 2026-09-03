@@ -24,6 +24,7 @@ public sealed class GraphCameraController
     private float _targetOrbitDistance = 2500.0f;
     private bool _isAnimating = false;
 
+    public bool IsAnimating => _isAnimating;
     public CameraComponent Camera => _camera;
     public GameObject CameraObject => _cameraObject;
     public Vector3 FocalPoint => _focalPoint;

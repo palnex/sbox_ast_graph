@@ -1,13 +1,12 @@
 #nullable enable
 using System;
 using System.Collections.Generic;
-using System.IO;
 using Editor.Analysis;
+using Editor.Analysis.Internal.Navigation;
 using Editor.Analysis.Models;
 using Editor.Analysis.Models.Blocks;
 using ArchitectureVisualizer.UI.Bridge;
 using ArchitectureVisualizer.UI.CanvasEngine.Models;
-using ArchitectureVisualizer.UI;
 using ArchitectureVisualizer.UI.Floating;
 using Editor;
 using Sandbox;
@@ -28,8 +27,9 @@ public sealed class ArchitectureVisualizerDock : Widget
 
     private readonly GraphFilterOptions _filters = new()
     {
-        UserCodeOnly = false,
+        UserCodeOnly = true,
         IncludeSystemPrimitives = false,
+        IncludeCompilerGenerated = false,
         MaxNodesToLoad = 30000
     };
 
@@ -64,18 +64,12 @@ public sealed class ArchitectureVisualizerDock : Widget
             if ( idx < 0 || idx >= _canvas.Registry.Count ) return;
             var payload = _canvas.Registry.GetPayload( idx );
 
-            // If we have NodeBlock attached in UserData, use its built-in navigation
             if ( payload.UserData is NodeBlock nodeBlock && nodeBlock.OpenInEditor() )
                 return;
 
-            // Fallback manual path resolution
             if ( !string.IsNullOrEmpty( payload.FilePath ) )
             {
-                string path = payload.FilePath;
-                if ( !Path.IsPathRooted( path ) && Project.Current != null )
-                    path = Path.GetFullPath( Path.Combine( Project.Current.RootDirectory.FullName, path ) );
-
-                if ( File.Exists( path ) ) CodeEditor.OpenFile( path, payload.LineNumber );
+                CodeNavigator.OpenFile( payload.FilePath, payload.LineNumber );
             }
         };
 
@@ -115,6 +109,9 @@ public sealed class ArchitectureVisualizerDock : Widget
     {
         base.OnResize();
 
+        if ( Size.x <= 0 || Size.y <= 0 )
+            return;
+
         if ( _topHud != null )
         {
             _topHud.Position = new Vector2( 14, 14 );
@@ -125,6 +122,16 @@ public sealed class ArchitectureVisualizerDock : Widget
         {
             _forcesHud.AdjustSize();
             _forcesHud.UpdatePosition();
+        }
+    }
+
+    [EditorEvent.Frame]
+    public void OnFrame()
+    {
+        // One-time snap if initialized with zero bounds
+        if ( _forcesHud != null && _forcesHud.Position.x <= 0 && Size.x > 100 )
+        {
+            OnResize();
         }
     }
 
